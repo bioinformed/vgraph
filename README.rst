@@ -26,9 +26,9 @@ Output
 diagnostic only information.  The output will be improved in future versions
 to generate:
 
-  # Annotated VCF/BCF files with per-record match status
-  # Detailed output and diagnostic information for mismatching loci
-  # Summary statistics (overall and stratified by variant type and context)
+    1. Annotated VCF/BCF files with per-record match status
+    2. Detailed output and diagnostic information for mismatching loci
+    3. Summary statistics (overall and stratified by variant type and context)
 
 Usage
 -----
@@ -53,16 +53,23 @@ Usage
 Installation
 ------------
 
-Installing ``vgraph`` requires a C compiler, functioning version of Python
-2.7 with development libraries installed  and ``pip``.
+Before ``vgraph`` may be installed, your systems requires a C compiler, a
+functioning version of Python 2.7 with development libraries installed, and
+the ``pip`` installer.  The steps to install and ensuring these tools are
+functional depend on your operating system and personal configuration. 
+Proceed only once these pre-requisites are available.
+
+First install the latest version of the Cython package::
+
+    pip install -U Cython
 
 ``vgraph`` currently requires a pre-release version of the ``pysam``
 package.  This requirement will be lifted soon and an official release of
 ``pysam`` will be required instead.  In the mean time, install this
 version::
 
-    pip install -U git+https://github.com/bioinformed/pysam.git/bcf_rw
+    pip install -U git+https://github.com/bioinformed/pysam.git@bcf_rw
 
-And then install ``vgraph``::
+If all these steps have succeeded, then finally install ``vgraph``::
 
     pip install -U git+https://github.com/bioinformed/vgraph.git
