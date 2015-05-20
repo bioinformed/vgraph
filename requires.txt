@@ -1,0 +1,2 @@
+Cython>=0.22
+git+https://github.com/bioinformed/pysam.git/bcf_rw

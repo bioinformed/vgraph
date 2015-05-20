@@ -1,0 +1,6 @@
+include README.rst
+include setup.py
+include setup.cfg
+recursive-include vgraph *.pyx *.pxd *.txt
+recursive-include tests *.py
+recursive-include doc *.rst *.py Makefile make.bat

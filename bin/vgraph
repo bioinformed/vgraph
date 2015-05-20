@@ -1,0 +1,156 @@
+from __future__ import division
+
+from os.path          import expanduser
+from argparse         import ArgumentParser
+from collections      import defaultdict
+from operator         import attrgetter
+from itertools        import chain
+
+from pysam            import VariantFile, Fastafile
+
+from vgraph.bed       import BedFile
+from vgraph.norm      import normalize_alleles
+from vgraph.intervals import intersect
+from vgraph.iterstuff import sort_almost_sorted, is_empty_iter
+from vgraph.vargraph  import generate_genotypes
+
+
+def prefixes(s):
+    if not s:
+        yield ''
+
+    for i in range(1, len(s) + 1):
+        yield s[:i]
+
+
+def suffixes(s):
+    if not s:
+        yield ''
+
+    for i in range(1, len(s) + 1):
+        yield s[-i:]
+
+
+class Locus(object):
+    '''Normalization data for a single VCF record'''
+    __slots__ = ('recnum', 'record', 'start', 'stop', 'left', 'right')
+
+    def __init__(self, recnum, record, ref, left_bound=0):
+        self.recnum = recnum
+        self.record = record
+
+        start, stop, alleles = normalize_alleles(ref, record.start, record.stop, record.alleles, left=True, shuffle=False)
+        refa, alts = alleles[0], alleles[1:]
+
+        # Left shuffle locus with all alt alleles considered simultaneously and left bound of previous locus
+        self.left = normalize_alleles(ref, start, stop, alleles, bound=left_bound, left=True)
+
+        # Right shuffle locus with all alt alleles considered simultaneously
+        self.right = normalize_alleles(ref, start, stop, alleles, left=False)
+
+        # Minimum start and stop coordinates over each alt allele
+        # n.b. may be broader than with all alleles or with bounds
+        lefts = [[start, self.left.start],
+                 (normalize_alleles(ref, start, stop,           (refa, alt),    left=True).start for alt in alts),
+                 (normalize_alleles(ref, start, start + len(r), (r,    ''),     left=True).start for r in prefixes(refa) if r),
+                 (normalize_alleles(ref, start, start,          ('',   prealt), left=True).start for alt in alts for prealt in prefixes(alt) if prealt)]
+
+        rights = [[stop, self.right.stop],
+                  (normalize_alleles(ref, start,         stop, (refa, alt),    left=False).stop for alt in alts),
+                  (normalize_alleles(ref, stop - len(r), stop, (r,    ''),     left=False).stop for r in suffixes(refa) if r),
+                  (normalize_alleles(ref, stop,          stop, ('',   sufalt), left=False).stop for alt in alts for sufalt in suffixes(alt) if sufalt)]
+
+        self.start = min(chain.from_iterable(lefts))
+        self.stop  = max(chain.from_iterable(rights))
+
+
+def records_to_loci(ref, records):
+    # Prevents left shuffling the locus through the previous locus
+    last_left_stop = 0
+    for i, record in enumerate(records):
+        if all(not alt.startswith('<') for alt in record.alts):
+            locus = Locus(i, record, ref, last_left_stop)
+            last_left_stop = locus.left.stop
+            yield locus
+
+
+def informative_chromosomes(vars):
+    return (chrom for chrom in vars.index if not is_empty_iter(vars.fetch(chrom)))
+
+
+def make_bedmap(bedfile):
+    bedmap = defaultdict(list)
+    for record in bedfile:
+        bedmap[record.contig].append(record)
+    return bedmap
+
+
+def include_filter(records, include):
+    for start, stop, (rec, inc) in intersect([records, include]):
+        if inc:
+            for record in rec:
+                yield record
+
+
+def parse_args():
+    parser = ArgumentParser()
+    parser.add_argument('vcf1', help='Input VCF (- for stdin).')
+    parser.add_argument('vcf2', help='Input VCF (- for stdin).')
+    parser.add_argument('-i', '--include', help='BED file of high confidence regions to compare')
+    parser.add_argument('-o', '--out-vcf', default='-', help='Output VCF (- for stdout).')
+    parser.add_argument('--reference', required=True, help='Reference FASTA')
+
+    return parser.parse_args()
+
+
+def variants_by_chromosome(refs, vars, include=None):
+    vars   = [VariantFile(var) for var in vars]
+
+    chroms = [set(informative_chromosomes(var)) for var in vars]
+    chroms = set.union(*chroms)
+
+    if include is not None:
+        include = make_bedmap(BedFile(include))
+        chroms &= set(include)
+
+    for chrom in chroms:
+        ref  = refs.fetch(chrom).upper()
+        loci = [records_to_loci(ref, var.fetch(chrom)) for var in vars]
+        loci = [sort_almost_sorted(l, key=attrgetter('start', 'stop')) for l in loci]
+        if include is not None:
+            loci = [include_filter(l, include[chrom]) for l in loci]
+        yield chrom, ref, loci
+
+
+def main(args):
+    refs = Fastafile(expanduser(args.reference))
+
+    for chrom, ref, loci in variants_by_chromosome(refs, [args.vcf1, args.vcf2], args.include):
+        last_stop = -1
+        for start, stop, superloci in intersect(loci, min_distance=2):
+            super1 = sorted(superloci[0], key=attrgetter('recnum'))
+            super2 = sorted(superloci[1], key=attrgetter('recnum'))
+
+            genos1 = set(generate_genotypes(ref, start, stop, super1))
+            genos2 = set(generate_genotypes(ref, start, stop, super2))
+
+            assert start <= stop
+            assert last_stop < start
+            last_stop = stop
+
+            status = 'MATCH!' if genos1 & genos2 else 'MISMATCH!'
+            print chrom, start, stop, status
+            for i, superlocus in enumerate([super1, super2], 1):
+                for locus in superlocus:
+                    lstart = locus.left.start
+                    lstop = locus.left.stop
+                    sample = locus.record.samples[0]
+                    indices = sample.allele_indices
+                    sep = '|' if sample.phased else '/'
+                    geno = sep.join(locus.left.alleles[a] or '-' if a is not None else '.' for a in indices)
+                    print '{:2d}: [{:5d}-{:5d}) ref={} geno={}'.format(i, lstart, lstop, locus.left.alleles[0], geno)
+            print
+
+
+if __name__ == '__main__':
+    main(parse_args())
