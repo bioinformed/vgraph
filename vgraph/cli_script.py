@@ -140,5 +140,8 @@ def main(args):
             print()
 
 
-if __name__ == '__main__':
+def cli():
     main(parse_args())
+
+if __name__ == '__main__':
+    cli()
