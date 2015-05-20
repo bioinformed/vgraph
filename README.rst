@@ -47,14 +47,21 @@ Usage
 
 ``vgraph`` takes the following command line parameters::
 
-    usage: vgraph [-h] [-i INCLUDE] [-o OUT_VCF] --reference REFERENCE vcf1 vcf2
+    usage: vgraph [-h] [--name1 N] [--name2 N] [-p N] [-i INCLUDE] [-o OUT_VCF]
+                  --reference REFERENCE
+                  vcf1 vcf2
 
     positional arguments:
-      vcf1                  Input VCF1 (- for stdin).
-      vcf2                  Input VCF2 (- for stdin).
+      vcf1                  VCF/BCF input 1 (- for stdin).
+      vcf2                  VCF/BCF input 2 (- for stdin).
 
     optional arguments:
       -h, --help            show this help message and exit
+      --name1 N             Name or index of sample in vcf1 (default=0).
+      --name2 N             Name or index of sample in vcf2 (default=0).
+      -p N, --reference-padding N
+                            Force loci within N bp into the same super locus
+                            (default=2).
       -i INCLUDE, --include INCLUDE
                             BED file of high confidence regions to compare
       -o OUT_VCF, --out-vcf OUT_VCF

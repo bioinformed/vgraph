@@ -1,8 +1,11 @@
 '''
 Normalization of alleles relative to a reference sequence
 '''
+
 import sys
+
 from collections import namedtuple
+from itertools   import chain
 
 
 normalized_alleles = namedtuple('shuffled_alleles', 'start stop alleles')
@@ -73,7 +76,7 @@ cdef normalize_alleles_left(bytes ref, int start, int stop, alleles, int bound, 
     trimmed, alleles = trim_common_prefixes(alleles)
     start += trimmed
 
-    #assert bound <= start,'start={:d}, left bound={:d}'.format(start, bound)
+    assert bound <= start,'start={:d}, left bound={:d}'.format(start, bound)
 
     # STEP 3: While a null allele exists, left shuffle by prepending alleles
     #         with reference and trimming common suffixes
@@ -118,7 +121,7 @@ cdef normalize_alleles_right(bytes ref, int start, int stop, alleles, int bound,
     trimmed, alleles = trim_common_suffixes(alleles)
     stop -= trimmed
 
-    #assert bound >= stop,'stop={:d}, right bound={:d}'.format(stop, bound)
+    assert bound >= stop,'stop={:d}, right bound={:d}'.format(stop, bound)
 
     # STEP 3: While a null allele exists, right shuffle by appending alleles
     #         with reference and trimming common prefixes
@@ -144,3 +147,52 @@ cdef normalize_alleles_right(bytes ref, int start, int stop, alleles, int bound,
             break
 
     return normalized_alleles(start, stop, tuple(alleles))
+
+
+def prefixes(s):
+    if not s:
+        yield ''
+
+    for i in range(1, len(s) + 1):
+        yield s[:i]
+
+
+def suffixes(s):
+    if not s:
+        yield ''
+
+    for i in range(1, len(s) + 1):
+        yield s[-i:]
+
+
+class NormalizedLocus(object):
+    '''Normalization data for a single VCF record'''
+    __slots__ = ('recnum', 'record', 'start', 'stop', 'left', 'right')
+
+    def __init__(self, recnum, record, ref, left_bound=0):
+        self.recnum = recnum
+        self.record = record
+
+        start, stop, alleles = normalize_alleles(ref, record.start, record.stop, record.alleles, left=True, shuffle=False)
+        refa, alts = alleles[0], alleles[1:]
+
+        # Left shuffle locus with all alt alleles considered simultaneously and left bound of previous locus
+        self.left = normalize_alleles(ref, start, stop, alleles, bound=left_bound, left=True)
+
+        # Right shuffle locus with all alt alleles considered simultaneously
+        self.right = normalize_alleles(ref, start, stop, alleles, left=False)
+
+        # Minimum start and stop coordinates over each alt allele
+        # n.b. may be broader than with all alleles or with bounds
+        lefts = [[start, self.left.start],
+                 (normalize_alleles(ref, start, stop,           (refa, alt),    left=True).start for alt in alts),
+                 (normalize_alleles(ref, start, start + len(r), (r,    ''),     left=True).start for r in prefixes(refa) if r),
+                 (normalize_alleles(ref, start, start,          ('',   prealt), left=True).start for alt in alts for prealt in prefixes(alt) if prealt)]
+
+        rights = [[stop, self.right.stop],
+                  (normalize_alleles(ref, start,         stop, (refa, alt),    left=False).stop for alt in alts),
+                  (normalize_alleles(ref, stop - len(r), stop, (r,    ''),     left=False).stop for r in suffixes(refa) if r),
+                  (normalize_alleles(ref, stop,          stop, ('',   sufalt), left=False).stop for alt in alts for sufalt in suffixes(alt) if sufalt)]
+
+        self.start = min(chain.from_iterable(lefts))
+        self.stop  = max(chain.from_iterable(rights))

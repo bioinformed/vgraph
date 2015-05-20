@@ -45,7 +45,7 @@ def get_path_seq(path):
     return ''.join(p.seq for p in path)
 
 
-def make_vargraph(ref, start, stop, loci):
+def make_vargraph(ref, start, stop, loci, name):
     start_node = RefNode(start, start, '')
     vg = VariantGraph(defaultdict(set), start_node, defaultdict(int), defaultdict(set), [])
     ref_cache = RefCache(ref)
@@ -54,7 +54,7 @@ def make_vargraph(ref, start, stop, loci):
 
     for locus in loci:
         left_locus = locus.left
-        sample = locus.record.samples[0]
+        sample = locus.record.samples[name]
         indices = sample.allele_indices
 
         new_layer = []
@@ -66,7 +66,7 @@ def make_vargraph(ref, start, stop, loci):
                 vg.zygosity_constraints[node] = indices.count(i)
 
                 # Add phase constraint for hets only
-                if sample.phased and indices[0] != indices[1]:
+                if sample.phased and len(indices) == 2 and indices[0] != indices[1]:
                     phaseset = 'M' if indices[0] == i else 'F'
                     vg.phase_constraints[phaseset].add(node)
             else:
@@ -101,8 +101,8 @@ def make_vargraph(ref, start, stop, loci):
     return vg
 
 
-def generate_genotypes(ref, start, stop, loci):
-    vg = make_vargraph(ref, start, stop, loci)
+def generate_genotypes(ref, start, stop, loci, name):
+    vg = make_vargraph(ref, start, stop, loci, name)
 
     if 0:
         print '-' * 80
