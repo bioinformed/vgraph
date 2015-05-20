@@ -27,9 +27,9 @@ Topic :: Scientific/Engineering :: Bioinformatics
 if __name__ == '__main__':
     setup(
         name = 'vgraph',
-        version = '1.0',
+        version = '0.1',
         description = 'Graph-based variant normalization and comparison tools',
-        # url = 'https://'
+        url = 'https://github.com/bioinformed/vgraph',
         author = 'Kevin Jacobs',
         maintainer = 'Kevin Jacobs',
         author_email = 'jacobs@bioinformed.com',

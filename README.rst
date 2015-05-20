@@ -3,13 +3,25 @@ Variant Graph Comparison Tool
 
 Kevin Jacobs <jacobs@bioinfomed.com>
 
-``vgraph`` is a command line application and Python library to compare genetic
-variants using variant graphs.  Conventional methods used to compare
+``vgraph`` is a command line application and Python library to compare
+genetic variants using variant graphs.  Conventional methods used to compare
 variants apply heuristic normalization rules and then compare variants
-individually by matching based on genomic position and allele information.
-In contrast, ``vgraph`` utilizes a graph representation of genomic variants in
-to precisely compare complex variants that are refractory to conventional
-comparison methods.
+individually by matching based on genomic position and allele information. 
+In contrast, ``vgraph`` utilizes a graph representation of genomic variants
+in to precisely compare complex variants that are refractory to comparison
+using conventional methods.
+
+**NOTICE:** ``vgraph`` is under heavy development and is not yet ready for
+production use.  The graph model and comparison logic is becoming mature and
+continues to be validated and fine tuned on data from diverse variant
+callers.  However, output is still very verbose, diagnostic heavy and
+doesn't have built-in aggregation, but is usable with basic technical
+knowledge.  Please treat these versions as "alpha" quality that are suitable
+for evaluation by other tool developers and skilled technical users.  The
+first beta version will be ready in a couple of weeks and will be more "end
+user" friendly and will have pretty output and nice aggregation and summary
+output statistics.  A production-ready release for the masses is planned by
+the upcoming GA4GH meeting in Leiden (6/9/2015 - 6/11/2015).
 
 Input
 -----
@@ -24,7 +36,7 @@ Output
 
 ``vgraph`` is current in an early development state and currently outputs
 diagnostic only information.  The output will be improved in future versions
-to generate:
+to generate::
 
     1. Annotated VCF/BCF files with per-record match status
     2. Detailed output and diagnostic information for mismatching loci
