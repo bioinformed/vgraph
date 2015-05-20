@@ -39,10 +39,10 @@ if __name__ == '__main__':
         zip_safe = False,
         test_suite = 'nose.collector',
         tests_require = tests_require,
-        packages = find_packages(),
+        packages = find_packages(include=['vgraph*']),
         install_requires = install_requires,
         setup_requires = setup_requires,
         cmdclass = {'build_ext': build_ext},
         ext_modules = ext_modules,
-        scripts=['bin/vgraph'],
+        entry_points={'console_scripts': ['vgraph = vgraph.cli_script:cli']}
     )
