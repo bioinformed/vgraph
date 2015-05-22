@@ -80,8 +80,12 @@ def pairwise(iterable):
 
 
 def grouper(iterable, n, fillvalue=None):
-    "Collect data into fixed-length chunks or blocks"
-    # grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx
+    """
+    Collect data into fixed-length chunks or blocks"
+
+    >>> [''.join(g) for g in grouper('ABCDEFG', 3, 'x')]
+    ['ABC', 'DEF', 'Gxx']
+    """
     args = [iter(iterable)] * n
     return izip_longest(fillvalue=fillvalue, *args)
 
@@ -113,9 +117,13 @@ def powerset(iterable):
 
 
 def unique_everseen(iterable, key=None):
-    "List unique elements, preserving order. Remember all elements ever seen."
-    # unique_everseen('AAAABBBCCDAABBB') --> A B C D
-    # unique_everseen('ABBCcAD', str.lower) --> A B C D
+    """List unique elements, preserving order. Remember all elements ever seen.
+
+    >>> ''.join(unique_everseen('AAAABBBCCDAABBB'))
+    'ABCD'
+    >>> ''.join(unique_everseen('ABBCcAD', str.lower))
+    'ABCD'
+    """
     seen = set()
     seen_add = seen.add
     if key is None:
@@ -131,14 +139,19 @@ def unique_everseen(iterable, key=None):
 
 
 def unique_justseen(iterable, key=None):
-    "List unique elements, preserving order. Remember only the element just seen."
-    # unique_justseen('AAAABBBCCDAABBB') --> A B C D A B
-    # unique_justseen('ABBCcAD', str.lower) --> A B C A D
+    """
+    List unique elements, preserving order. Remember only the element just seen."
+
+    >>> ''.join(unique_justseen('AAAABBBCCDAABBB'))
+    'ABCDAB'
+    >>> ''.join(unique_justseen('ABBCcAD', str.lower))
+    'ABCAD'
+    """
     return imap(next, imap(itemgetter(1), groupby(iterable, key)))
 
 
 def iter_except(func, exception, first=None):
-    """ Call a function repeatedly until an exception is raised.
+    """Call a function repeatedly until an exception is raised.
 
     Converts a call-until-exception interface to an iterator interface.
     Like __builtin__.iter(func, sentinel) but uses an exception instead
@@ -223,12 +236,12 @@ def first(iterable, default=_nothing):
 
 
 def only_one(iterable, default=_nothing, sentinel=_nothing):
-    '''
+    """
     Return the first item from iterable, if and only if iterable contains a
     single element.  Raises ValueError if iterable contains more than a
     single element.  If iterable is empty, then return default value, if
     provided.  Otherwise raises ValueError.
-    '''
+    """
     it = iter(iterable)
 
     try:
@@ -292,7 +305,7 @@ def _zip_exact_check(rest):
 
 
 def izip_exact(*iterables):
-    '''
+    """
     izip_exact(iter1 [,iter2 [...]]) --> iterator object
 
     Return an iterator whose .next() method returns a tuple where the i-th
@@ -352,7 +365,7 @@ def izip_exact(*iterables):
     Traceback (most recent call last):
          ...
     LengthMismatch
-    '''
+    """
     if not iterables:
         return iter(iterables)
     elif len(iterables) == 1:
@@ -378,14 +391,14 @@ class OrderError(ValueError):
     pass
 
 
-def sort_almost_sorted(sequence, key=None, windowsize=1000, stable=True):
-    '''
-    sort_almost_sorted(sequence, key=None, windowsize=1000, stable=True)
+def sort_almost_sorted(iterable, key=None, windowsize=1000, stable=True):
+    """
+    sort_almost_sorted(iterable, key=None, windowsize=1000, stable=True)
 
-    Sorts an almost sorted sequence of items provided that all misordered
+    Sorts an almost sorted iterable of items provided that all misordered
     items are within windowsize elements of the correct location in the final
-    sequence.  Returns a generator that yields the correctly sorted sequence
-    or raises OrderError if the correct sequence cannot be constructed with
+    iterable.  Returns a generator that yields the correctly sorted iterable
+    or raises OrderError if the correct iterable cannot be constructed with
     the given window size.
 
     If a key function is provided or the stable argument is True, then the
@@ -422,35 +435,35 @@ def sort_almost_sorted(sequence, key=None, windowsize=1000, stable=True):
 
         >>> list(sort_almost_sorted([1,2,3,4], key=lambda x: -x))
         [4, 3, 2, 1]
-    '''
+    """
     from operator import itemgetter
 
     # Key sorts are always stable, since we already pay the price for a
-    # decorated sequence.
+    # decorated iterable.
     if key is not None:
-        decorated = ((key(item), i, item) for i, item in enumerate(sequence))
+        decorated = ((key(item), i, item) for i, item in enumerate(iterable))
         ordered   = _sort_almost_sorted(decorated, windowsize)
         return imap(itemgetter(2), ordered)
 
     # Otherwise, use a similar method as above to ensure stability
     elif stable:
-        decorated = ((item, i) for i, item in enumerate(sequence))
+        decorated = ((item, i) for i, item in enumerate(iterable))
         ordered   = _sort_almost_sorted(decorated, windowsize)
         return imap(itemgetter(0), ordered)
 
     # Unstable, undecorated sort
     else:
-        return _sort_almost_sorted(sequence, windowsize)
+        return _sort_almost_sorted(iterable, windowsize)
 
 
-def _sort_almost_sorted(sequence, windowsize):
-    '''
+def _sort_almost_sorted(iterable, windowsize):
+    """
     Internal function.  See sort_almost_sorted
-    '''
+    """
     from heapq import heapify, heappushpop, heappop
 
     # STAGE 1: Fill initial window and heapify
-    it   = iter(sequence)
+    it   = iter(iterable)
     heap = list(islice(it, windowsize))
 
     # Establish invariant len(heap)>0
@@ -459,7 +472,7 @@ def _sort_almost_sorted(sequence, windowsize):
 
     heapify(heap)
 
-    # STAGE 2: Slide window until end of sequence
+    # STAGE 2: Slide window until end of iterable
     last = heap[0]
 
     # Loop invariants:
@@ -484,43 +497,41 @@ def _sort_almost_sorted(sequence, windowsize):
         yield heappop(heap)
 
 
-def check_sorted_iter(sequence, key=None):
-    '''
-    check_sorted_iter(sequence, key=None) -> sequence
+def ensure_ordered(iterable, key=None):
+    """
+    ensure_ordered(iterable, key=None) -> iterable
 
-    Returns a generator that yields all elements of sequence, provided that
+    Returns a generator that yields all elements of iterable, provided that
     the elements are sorted in non-descending order.  Otherwise an OrderError
     exception is raised.
 
-    >>> list(check_sorted_iter([1, 2, 3]))
+    >>> list(ensure_ordered([1, 2, 3]))
     [1, 2, 3]
 
-    >>> list(check_sorted_iter([3, 2, 1]))
+    >>> list(ensure_ordered([3, 2, 1]))
     Traceback (most recent call last):
          ...
     OrderError: Invalid sort order
 
-    >>> list(check_sorted_iter([1.7, 1.5, 1.6, 1.4], key=lambda x: int(x)))
+    >>> list(ensure_ordered([1.7, 1.5, 1.6, 1.4], key=lambda x: int(x)))
     [1.7, 1.5, 1.6, 1.4]
-    '''
-    it = iter(sequence)
+    """
+    it = iter(iterable)
 
     try:
         last = next(it)
     except StopIteration:
         return
 
-    if key is None:
-        yield last
+    yield last
 
+    if key is None:
         for item in it:
             if item < last:
                 raise OrderError('Invalid sort order')
-
             last = item
             yield item
     else:
-        yield last
         last = key(last)
 
         for item in it:
@@ -529,6 +540,47 @@ def check_sorted_iter(sequence, key=None):
                 raise OrderError('Invalid sort order')
             last = current
             yield item
+
+
+def ensure_unique_everseen(iterable, key=None):
+    """
+    ensure_unique_everseen(iterable, key=None) -> iterable
+
+    Returns a generator that yields all elements of iterable, provided that
+    the elements are unique based on hashability and equality.  Otherwise a
+    ValueError exception is raised.
+
+    >>> list(ensure_unique_everseen([1, 2, 3]))
+    [1, 2, 3]
+
+    >>> list(ensure_unique_everseen([1, 2, 1]))
+    Traceback (most recent call last):
+         ...
+    ValueError: non-unique element detected
+
+    >>> list(ensure_unique_everseen([1.7, 1.5, 1.6, 1.4]))
+    [1.7, 1.5, 1.6, 1.4]
+
+    >>> list(ensure_unique_everseen([1.7, 1.5, 1.6, 1.4], key=lambda x: int(x)))
+    Traceback (most recent call last):
+         ...
+    ValueError: non-unique element detected
+    """
+    seen = set()
+    seen_add = seen.add
+    if key is None:
+        for element in iterable:
+            if element in seen:
+                raise ValueError('non-unique element detected')
+            seen_add(element)
+            yield element
+    else:
+        for element in iterable:
+            k = key(element)
+            if k in seen:
+                raise ValueError('non-unique element detected')
+            seen_add(k)
+            yield element
 
 
 def _test():

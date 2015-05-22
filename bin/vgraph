@@ -138,7 +138,7 @@ def main(args):
                     indices = sample.allele_indices
                     sep = '|' if sample.phased else '/'
                     geno = sep.join(locus.left.alleles[a] or '-' if a is not None else '.' for a in indices)
-                    print('  NORM{:d}: [{:5d}-{:5d}) ref={} geno={}'.format(i, lstart, lstop, locus.left.alleles[0], geno))
+                    print('  NORM{:d}: [{:5d}-{:5d}) ref={} geno={}'.format(i, lstart, lstop, locus.left.alleles[0] or '-', geno))
             print()
 
 

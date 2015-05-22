@@ -76,7 +76,7 @@ cdef normalize_alleles_left(bytes ref, int start, int stop, alleles, int bound, 
     trimmed, alleles = trim_common_prefixes(alleles)
     start += trimmed
 
-    assert bound <= start,'start={:d}, left bound={:d}'.format(start, bound)
+    #assert bound <= start,'start={:d}, left bound={:d}'.format(start, bound)
 
     # STEP 3: While a null allele exists, left shuffle by prepending alleles
     #         with reference and trimming common suffixes
@@ -121,7 +121,7 @@ cdef normalize_alleles_right(bytes ref, int start, int stop, alleles, int bound,
     trimmed, alleles = trim_common_suffixes(alleles)
     stop -= trimmed
 
-    assert bound >= stop,'stop={:d}, right bound={:d}'.format(stop, bound)
+    #assert bound >= stop,'stop={:d}, right bound={:d}'.format(stop, bound)
 
     # STEP 3: While a null allele exists, right shuffle by appending alleles
     #         with reference and trimming common prefixes

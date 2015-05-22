@@ -1,7 +1,9 @@
-from itertools    import combinations, combinations_with_replacement
-from collections  import namedtuple, defaultdict, Counter
+from itertools        import imap, combinations, combinations_with_replacement
+from collections      import namedtuple, defaultdict, Counter
 
-from vgraph.graph import bfs_paths
+from vgraph.graph     import bfs_paths
+from vgraph.iterstuff import unique_everseen
+
 
 RefNode = namedtuple('RefNode', 'start stop seq')
 AltNode = namedtuple('AltNode', 'start stop seq locus')
@@ -117,7 +119,10 @@ def generate_genotypes(ref, start, stop, loci, name):
         print 'PHASE CONSTRAINTS:', vg.phase_constraints
         print
 
-    paths = sorted(set(tuple(path) for path in bfs_paths(vg.graph, vg.start_node)))
+
+    paths = imap(tuple, bfs_paths(vg.graph, vg.start_node))
+    paths = list(unique_everseen(paths))
+
     valid_paths = [path for path in paths if is_valid_path(path, vg)]
 
     # Any het constraint precludes looking at homozygous genotypes
