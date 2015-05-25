@@ -2,6 +2,8 @@
 
 from __future__ import division, print_function
 
+import sys
+
 from os.path          import expanduser
 from argparse         import ArgumentParser
 from collections      import defaultdict
@@ -91,7 +93,8 @@ def parse_args():
                         help='Force loci within N bp into the same super locus (default=2).')
     parser.add_argument('-i', '--include', help='BED file of high confidence regions to compare')
     parser.add_argument('-o', '--out-vcf', default='-', help='Output VCF (- for stdout).')
-    parser.add_argument('--reference', required=True, help='Reference FASTA')
+    parser.add_argument('--reference', metavar='FASTA', required=True, help='Reference FASTA+FAI')
+    parser.add_argument('--profile', action='store_true', help='Profile code performance')
 
     return parser.parse_args()
 
@@ -143,4 +146,13 @@ def main(args):
 
 
 if __name__ == '__main__':
-    main(parse_args())
+    args = parse_args()
+    if args.profile:
+        import yappi
+        yappi.start()
+        main(args)
+        yappi.stop()
+        stats = yappi.get_func_stats().strip_dirs()
+        stats.print_all(out=sys.stderr, columns={0: ('name', 45), 1: ('ncall', 10), 2: ('tsub', 8), 3: ('ttot', 8), 4: ('tavg', 8)})
+    else:
+        main(args)

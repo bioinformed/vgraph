@@ -1,8 +1,5 @@
-from itertools        import imap, combinations, combinations_with_replacement
-from collections      import namedtuple, defaultdict, Counter
-
-from vgraph.graph     import bfs_paths
-from vgraph.iterstuff import unique_everseen
+from itertools        import combinations, combinations_with_replacement
+from collections      import deque, namedtuple, defaultdict, Counter
 
 
 RefNode = namedtuple('RefNode', 'start stop seq')
@@ -23,7 +20,7 @@ class RefCache(object):
         return node
 
 
-def is_valid_path(path, vg):
+def is_valid_path(vg, path):
     for a1, a2 in vg.antiphase_constraints:
         if not ((a1 in path) ^ (a2 in path)):
             return False
@@ -38,7 +35,7 @@ def is_valid_path(path, vg):
     return True
 
 
-def is_valid_geno(paths, vg):
+def is_valid_geno(vg, paths):
     observed_zygosity = Counter(p for path in paths for p in path if isinstance(p, AltNode))
     return vg.zygosity_constraints == observed_zygosity
 
@@ -48,21 +45,21 @@ def get_path_seq(path):
 
 
 def make_vargraph(ref, start, stop, loci, name):
-    start_node = RefNode(start, start, '')
+    start_node, stop_node = RefNode(start, start, ''), RefNode(stop + 1, stop + 1, '')
     vg = VariantGraph(defaultdict(set), start_node, defaultdict(int), defaultdict(set), [])
     ref_cache = RefCache(ref)
 
-    last_layer = [start_node]
+    prev_layer = [start_node]
 
     for locus in loci:
-        left_locus = locus.left
         sample = locus.record.samples[name]
         indices = sample.allele_indices
+        left = locus.left
 
         new_layer = []
         for i in set(indices):
             if i:
-                node = AltNode(left_locus.start, left_locus.stop, left_locus.alleles[i], locus)
+                node = AltNode(left.start, left.stop, left.alleles[i], locus)
 
                 # Add zygosity constraint
                 vg.zygosity_constraints[node] = indices.count(i)
@@ -72,22 +69,9 @@ def make_vargraph(ref, start, stop, loci, name):
                     phaseset = 'M' if indices[0] == i else 'F'
                     vg.phase_constraints[phaseset].add(node)
             else:
-                node = ref_cache[left_locus.start, left_locus.stop]
+                node = ref_cache[left.start, left.stop]
 
-            # Link into previous nodes
-            for last in last_layer:
-                # Do not link back to nodes that overlap current node
-                if last.stop > node.start:
-                    continue
-
-                # Slice in a reference sequence if nodes do not join cleanly
-                if last.stop < node.start:
-                    ref_gap = ref_cache[last.stop, node.start]
-                    vg.graph[last].add(ref_gap)
-                    last = ref_gap
-
-                # Join new node to previous
-                vg.graph[last].add(node)
+            _extend_graph(vg, prev_layer, ref_cache, node)
 
             new_layer.append(node)
 
@@ -95,12 +79,68 @@ def make_vargraph(ref, start, stop, loci, name):
         if 0 not in indices and len(new_layer) == 2:
             vg.antiphase_constraints.append(tuple(new_layer))
 
-        last_layer = new_layer
+        prev_layer = new_layer
 
-    for last in last_layer:
-        vg.graph[last].add(ref_cache[last.stop, stop + 1])
+    _extend_graph(vg, prev_layer, ref_cache, stop_node)
 
     return vg
+
+
+def _extend_graph(vg, prev_layer, ref_cache, node):
+    # Link into previous nodes
+    for prev in prev_layer:
+        # Do not link back to nodes that overlap current node
+        if prev.stop > node.start:
+            continue
+
+        # Slice in a reference sequence if nodes do not join cleanly
+        if prev.stop < node.start:
+            ref_gap = ref_cache[prev.stop, node.start]
+            vg.graph[prev].add(ref_gap)
+            prev = ref_gap
+
+        # Join new node to previous
+        vg.graph[prev].add(node)
+
+
+def _apply_phase_constrants(nodes, phasemap, phasesets):
+    if phasesets:
+        for node in nodes:
+            if phasemap.get(node) in phasesets:
+                return [node]
+    return nodes
+
+
+def generate_paths(vg):
+    graph, start = vg.graph, vg.start_node
+
+    phasemap = {node: name for name, phaseset in vg.phase_constraints.iteritems() for node in phaseset}
+
+    # queue of (path, pathset, phasesets)
+    path = [start]
+    queue = deque([(path, set(path), set())])
+    while queue:
+        path, pathset, phasesets = queue.popleft()
+        adjacent = [node for node in graph[path[-1]] if node not in pathset]
+
+        # yield at end of path
+        if not adjacent:
+            yield path
+            continue
+
+        # otherwise process adjacent nodes subjects to phase constraints
+        for node in _apply_phase_constrants(adjacent, phasemap, phasesets):
+            new_pathset = pathset.copy()
+            new_pathset.add(node)
+            new_phasesets = _update_phasesets(phasesets, phasemap.get(node))
+            queue.append((path + [node], new_pathset, new_phasesets))
+
+
+def _update_phasesets(phasesets, phaseset):
+    if phaseset is not None and phaseset not in phasesets:
+        phasesets = phasesets.copy()
+        phasesets.add(phaseset)
+    return phasesets
 
 
 def generate_genotypes(ref, start, stop, loci, name):
@@ -119,11 +159,9 @@ def generate_genotypes(ref, start, stop, loci, name):
         print 'PHASE CONSTRAINTS:', vg.phase_constraints
         print
 
+    paths = map(tuple, generate_paths(vg))
 
-    paths = imap(tuple, bfs_paths(vg.graph, vg.start_node))
-    paths = list(unique_everseen(paths))
-
-    valid_paths = [path for path in paths if is_valid_path(path, vg)]
+    valid_paths = [path for path in paths if is_valid_path(vg, path)]
 
     # Any het constraint precludes looking at homozygous genotypes
     if 1 in vg.zygosity_constraints.values():
@@ -131,7 +169,7 @@ def generate_genotypes(ref, start, stop, loci, name):
     else:
         comb = combinations_with_replacement(valid_paths, 2)
 
-    valid_pairs = [pair for pair in comb if is_valid_geno(pair, vg)]
+    valid_pairs = [pair for pair in comb if is_valid_geno(vg, pair)]
     valid_genos = sorted(set(tuple(sorted([get_path_seq(p1), get_path_seq(p2)])) for p1, p2 in valid_pairs))
 
     if 0:
