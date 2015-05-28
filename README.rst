@@ -48,7 +48,7 @@ Usage
 ``vgraph`` takes the following command line parameters::
 
     usage: vgraph [-h] [--name1 N] [--name2 N] [-p N] [-i INCLUDE] [-o OUT_VCF]
-                  --reference REFERENCE
+                  --reference FASTA [--profile]
                   vcf1 vcf2
 
     positional arguments:
@@ -66,8 +66,8 @@ Usage
                             BED file of high confidence regions to compare
       -o OUT_VCF, --out-vcf OUT_VCF
                             Output VCF (- for stdout).
-      --reference REFERENCE
-                            Reference FASTA
+      --reference FASTA     Reference FASTA+FAI
+      --profile             Profile code performance
 
 Installation
 ------------
@@ -87,7 +87,7 @@ package.  This requirement will be lifted soon and an official release of
 ``pysam`` will be required instead.  In the mean time, install this
 version::
 
-    pip install -U git+https://github.com/bioinformed/pysam.git@bcf_rw
+    pip install -U git+https://github.com/pysam-developers/pysam
 
 If all these steps have succeeded, then finally install ``vgraph``::
 
