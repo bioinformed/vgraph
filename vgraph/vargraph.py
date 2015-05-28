@@ -103,11 +103,11 @@ def _extend_graph(vg, prev_layer, ref_cache, node):
         vg.graph[prev].add(node)
 
 
-def _apply_phase_constrants(nodes, phasemap, phasesets):
+def _apply_phase_constrants(nodes, phasemap, phasesets, antiphasesets):
     if phasesets:
-        for node in nodes:
-            if phasemap.get(node) in phasesets:
-                return [node]
+        nodes = [ node for node in nodes if phasemap.get(node) in phasesets ] or nodes
+    if antiphasesets:
+        nodes = [ node for node in nodes if phasemap.get(node) not in antiphasesets ]
     return nodes
 
 
@@ -116,24 +116,31 @@ def generate_paths(vg):
 
     phasemap = {node: name for name, phaseset in vg.phase_constraints.iteritems() for node in phaseset}
 
-    # queue of (path, pathset, phasesets)
+    # queue of (path, pathset, phasesets, antiphasesets)
     path = [start]
-    queue = deque([(path, set(path), set())])
+    queue = deque([(path, set(path), set(), set())])
+
     while queue:
-        path, pathset, phasesets = queue.popleft()
+        path, pathset, phasesets, antiphasesets = queue.popleft()
         adjacent = [node for node in graph[path[-1]] if node not in pathset]
 
-        # yield at end of path
+        # yield complete paths
         if not adjacent:
             yield path
             continue
 
         # otherwise process adjacent nodes subjects to phase constraints
-        for node in _apply_phase_constrants(adjacent, phasemap, phasesets):
+        adjacent = _apply_phase_constrants(adjacent, phasemap, phasesets, antiphasesets)
+
+        # Set of new phase sets being added from this node
+        add_phasesets = set(phasemap.get(node) for node in adjacent if node in phasemap and node not in phasesets)
+
+        for node in adjacent:
             new_pathset = pathset.copy()
             new_pathset.add(node)
             new_phasesets = _update_phasesets(phasesets, phasemap.get(node))
-            queue.append((path + [node], new_pathset, new_phasesets))
+            new_antiphasesets = _update_antiphasesets(antiphasesets, add_phasesets, phasemap.get(node))
+            queue.append((path + [node], new_pathset, new_phasesets, new_antiphasesets))
 
 
 def _update_phasesets(phasesets, phaseset):
@@ -141,6 +148,14 @@ def _update_phasesets(phasesets, phaseset):
         phasesets = phasesets.copy()
         phasesets.add(phaseset)
     return phasesets
+
+
+def _update_antiphasesets(antiphasesets, add_phasesets, phaseset):
+    if add_phasesets:
+        add_anti = set(p for p in add_phasesets if p != phaseset and p not in antiphasesets)
+        if add_anti:
+            antiphasesets = antiphasesets | add_anti
+    return antiphasesets
 
 
 def generate_genotypes(ref, start, stop, loci, name):
@@ -160,16 +175,16 @@ def generate_genotypes(ref, start, stop, loci, name):
         print
 
     paths = map(tuple, generate_paths(vg))
-
     valid_paths = [path for path in paths if is_valid_path(vg, path)]
 
-    # Any het constraint precludes looking at homozygous genotypes
+    # Any het constraint remove the need to consider homozygous genotypes
+    # FIXME: diploid assumptions
     if 1 in vg.zygosity_constraints.values():
-        comb = combinations(valid_paths, 2)
+        pairs = combinations(valid_paths, 2)
     else:
-        comb = combinations_with_replacement(valid_paths, 2)
+        pairs = combinations_with_replacement(valid_paths, 2)
 
-    valid_pairs = [pair for pair in comb if is_valid_geno(vg, pair)]
+    valid_pairs = [pair for pair in pairs if is_valid_geno(vg, pair)]
     valid_genos = sorted(set(tuple(sorted([get_path_seq(p1), get_path_seq(p2)])) for p1, p2 in valid_pairs))
 
     if 0:
