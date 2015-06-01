@@ -198,3 +198,9 @@ class NormalizedLocus(object):
 
         self.start = min(chain.from_iterable(lefts))
         self.stop  = max(chain.from_iterable(rights))
+
+    def extreme_order_key(self):
+        return self.start, self.stop
+
+    def left_order_key(self):
+        return self.left.start, self.recnum
