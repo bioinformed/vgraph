@@ -1,10 +1,14 @@
+from __future__       import division, print_function
+
 from itertools        import combinations, combinations_with_replacement
 from collections      import deque, namedtuple, defaultdict, Counter
+
+from vgraph.norm      import NormalizedLocus
 
 
 RefNode = namedtuple('RefNode', 'start stop seq')
 AltNode = namedtuple('AltNode', 'start stop seq locus')
-VariantGraph = namedtuple('VariantGraph', 'graph start_node zygosity_constraints phase_constraints antiphase_constraints')
+VariantGraph = namedtuple('VariantGraph', 'graph start_node zygosity_constraints phase_constraints')
 
 
 class RefCache(object):
@@ -21,10 +25,6 @@ class RefCache(object):
 
 
 def is_valid_path(vg, path):
-    for a1, a2 in vg.antiphase_constraints:
-        if not ((a1 in path) ^ (a2 in path)):
-            return False
-
     if vg.phase_constraints:
         pathset = set(p for p in path if isinstance(p, AltNode))
         for phaseset in vg.phase_constraints.itervalues():
@@ -46,17 +46,23 @@ def get_path_seq(path):
 
 def make_vargraph(ref, start, stop, loci, name):
     start_node, stop_node = RefNode(start, start, ''), RefNode(stop + 1, stop + 1, '')
-    vg = VariantGraph(defaultdict(set), start_node, defaultdict(int), defaultdict(set), [])
+    vg = VariantGraph(defaultdict(set), start_node, defaultdict(int), defaultdict(set))
     ref_cache = RefCache(ref)
 
-    prev_layer = [start_node]
+    pos = start_node.start
+    new_layer = [start_node]
 
-    for locus in loci:
+    for locus in sorted(loci, key=NormalizedLocus.left_order_key):
         sample = locus.record.samples[name]
         indices = sample.allele_indices
         left = locus.left
 
-        new_layer = []
+        if left.start >= pos:
+            pos = left.start
+            prev_layer, new_layer = new_layer, []
+        elif left.start < pos:
+            raise ValueError('unordered locus previous start={}, current start={}'.format(pos, left.start))
+
         for i in set(indices):
             if i:
                 node = AltNode(left.start, left.stop, left.alleles[i], locus)
@@ -66,8 +72,8 @@ def make_vargraph(ref, start, stop, loci, name):
 
                 # Add phase constraint for hets only
                 if sample.phased and len(indices) == 2 and indices[0] != indices[1]:
-                    phaseset = 'M' if indices[0] == i else 'F'
-                    vg.phase_constraints[phaseset].add(node)
+                    phasename = 'M' if indices[0] == i else 'F'
+                    vg.phase_constraints[phasename].add(node)
             else:
                 node = ref_cache[left.start, left.stop]
 
@@ -75,13 +81,7 @@ def make_vargraph(ref, start, stop, loci, name):
 
             new_layer.append(node)
 
-        # Add antiphase (het) constraint for alt/alt
-        if 0 not in indices and len(new_layer) == 2:
-            vg.antiphase_constraints.append(tuple(new_layer))
-
-        prev_layer = new_layer
-
-    _extend_graph(vg, prev_layer, ref_cache, stop_node)
+    _extend_graph(vg, new_layer, ref_cache, stop_node)
 
     return vg
 
@@ -105,13 +105,21 @@ def _extend_graph(vg, prev_layer, ref_cache, node):
 
 def _apply_phase_constrants(nodes, phasemap, phasesets, antiphasesets):
     if phasesets:
-        nodes = [ node for node in nodes if phasemap.get(node) in phasesets ] or nodes
+        # If any adjacent node belongs to an already selected phase set,
+        # then allow only those nodes.  Otherwise, all nodes are valid.
+        nodes = [node for node in nodes if phasemap.get(node) in phasesets] or nodes
+
     if antiphasesets:
-        nodes = [ node for node in nodes if phasemap.get(node) not in antiphasesets ]
+        # Remove any node belonging to an anti-phaseset
+        nodes = [node for node in nodes if phasemap.get(node) not in antiphasesets]
+
     return nodes
 
 
-def generate_paths(vg):
+def generate_paths(vg, order='bfs'):
+    if order not in ('bfs', 'dfs'):
+        raise ValueError('invalid traversal order specified: {}'.format(order))
+
     graph, start = vg.graph, vg.start_node
 
     phasemap = {node: name for name, phaseset in vg.phase_constraints.iteritems() for node in phaseset}
@@ -120,8 +128,10 @@ def generate_paths(vg):
     path = [start]
     queue = deque([(path, set(path), set(), set())])
 
+    next_node = queue.popleft if order == 'bfs' else queue.pop
+
     while queue:
-        path, pathset, phasesets, antiphasesets = queue.popleft()
+        path, pathset, phasesets, antiphasesets = next_node()
         adjacent = [node for node in graph[path[-1]] if node not in pathset]
 
         # yield complete paths
@@ -129,11 +139,12 @@ def generate_paths(vg):
             yield path
             continue
 
-        # otherwise process adjacent nodes subjects to phase constraints
-        adjacent = _apply_phase_constrants(adjacent, phasemap, phasesets, antiphasesets)
-
         # Set of new phase sets being added from this node
+        # nb: must occur prior to pruning
         add_phasesets = set(phasemap.get(node) for node in adjacent if node in phasemap and node not in phasesets)
+
+        # prune adjacent nodes based on phase and anti-phase constraints
+        adjacent = _apply_phase_constrants(adjacent, phasemap, phasesets, antiphasesets)
 
         for node in adjacent:
             new_pathset = pathset.copy()
@@ -145,6 +156,7 @@ def generate_paths(vg):
 
 def _update_phasesets(phasesets, phaseset):
     if phaseset is not None and phaseset not in phasesets:
+        # only copy when adding a new phaseset
         phasesets = phasesets.copy()
         phasesets.add(phaseset)
     return phasesets
@@ -152,27 +164,26 @@ def _update_phasesets(phasesets, phaseset):
 
 def _update_antiphasesets(antiphasesets, add_phasesets, phaseset):
     if add_phasesets:
+        # Copy if adding a new anti-phaseset, one not equal to the current node's phaseset
         add_anti = set(p for p in add_phasesets if p != phaseset and p not in antiphasesets)
         if add_anti:
             antiphasesets = antiphasesets | add_anti
     return antiphasesets
 
 
-def generate_genotypes(ref, start, stop, loci, name):
+def generate_genotypes(ref, start, stop, loci, name, debug=False):
     vg = make_vargraph(ref, start, stop, loci, name)
 
-    if 0:
-        print '-' * 80
-        print 'VG [{:d}, {:d})'.format(start, stop)
+    if debug:
+        print('-' * 80)
+        print('VG [{:d}, {:d})'.format(start, stop))
         for src in sorted(vg.graph):
-            print '  {} -> {}'.format(src, vg.graph[src])
-        print
-        print 'ZYGOSITY CONSTRAINTS:', vg.zygosity_constraints
-        print
-        print 'ANTI-PHASE CONSTRAINTS:', vg.antiphase_constraints
-        print
-        print 'PHASE CONSTRAINTS:', vg.phase_constraints
-        print
+            print('  {} -> {}'.format(src, vg.graph[src]))
+        print()
+        print('ZYGOSITY CONSTRAINTS:', vg.zygosity_constraints)
+        print()
+        print('PHASE CONSTRAINTS:', vg.phase_constraints)
+        print()
 
     paths = map(tuple, generate_paths(vg))
     valid_paths = [path for path in paths if is_valid_path(vg, path)]
@@ -187,29 +198,29 @@ def generate_genotypes(ref, start, stop, loci, name):
     valid_pairs = [pair for pair in pairs if is_valid_geno(vg, pair)]
     valid_genos = sorted(set(tuple(sorted([get_path_seq(p1), get_path_seq(p2)])) for p1, p2 in valid_pairs))
 
-    if 0:
-        print 'PATHS:'
+    if debug:
+        print('PATHS:')
         for i, path in enumerate(paths, 1):
             assert len(path) == len(set(path))
-            print '{:4d}: {}'.format(i, path)
-        print
+            print('{:4d}: {}'.format(i, path))
+        print()
 
-        print 'VALID PATHS:'
+        print('VALID PATHS:')
         for i, path in enumerate(valid_paths, 1):
             assert len(path) == len(set(path))
-            print '{:4d}: {}'.format(i, path)
-        print
+            print('{:4d}: {}'.format(i, path))
+        print()
 
-        print 'VALID HAPLOTYPES:'
+        print('VALID HAPLOTYPES:')
         for i, path in enumerate(valid_paths, 1):
             assert len(path) == len(set(path))
-            print '{:4d}: {}'.format(i, get_path_seq(path))
-        print
+            print('{:4d}: {}'.format(i, get_path_seq(path)))
+        print()
 
-        print 'VALID GENOTYPES:'
+        print('VALID GENOTYPES:')
 
         for i, (allele1, allele2) in enumerate(valid_genos, 1):
-            print '{:4d}: {}/{}'.format(i, allele1, allele2)
-        print
+            print('{:4d}: {}/{}'.format(i, allele1, allele2))
+        print()
 
     return valid_genos
