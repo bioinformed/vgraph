@@ -3,6 +3,7 @@
 from __future__ import division, print_function
 
 import sys
+import traceback
 
 from os.path          import expanduser
 from argparse         import ArgumentParser
@@ -21,9 +22,9 @@ from vgraph.vargraph  import generate_genotypes
 def records_to_loci(ref, records):
     # Prevents left shuffling the locus through the previous locus
     last_left_stop = 0
-    for i, record in enumerate(records):
+    for recnum, record in enumerate(records):
         if all(not alt.startswith('<') for alt in record.alts):
-            locus = NormalizedLocus(i, record, ref, last_left_stop)
+            locus = NormalizedLocus(recnum, record, ref, last_left_stop)
             last_left_stop = locus.left.stop
             yield locus
 
@@ -94,6 +95,7 @@ def parse_args():
     parser.add_argument('-i', '--include', help='BED file of high confidence regions to compare')
     parser.add_argument('-o', '--out-vcf', default='-', help='Output VCF (- for stdout).')
     parser.add_argument('--reference', metavar='FASTA', required=True, help='Reference FASTA+FAI')
+    parser.add_argument('--debug', action='store_true', help='Output extremely verbose debugging information')
     parser.add_argument('--profile', action='store_true', help='Profile code performance')
 
     return parser.parse_args()
@@ -114,24 +116,33 @@ def main(args):
         # Proceed by superlocus
         for start, stop, (super1, super2) in superloci:
             # Resort each superlocus back into original VCF order
-            super1 = sorted(super1, key=attrgetter('recnum'))
-            super2 = sorted(super2, key=attrgetter('recnum'))
+            super1 = sorted(super1, key=NormalizedLocus.left_order_key)
+            super2 = sorted(super2, key=NormalizedLocus.left_order_key)
 
             # Create genotype sets for each superlocus
-            genos1 = set(generate_genotypes(ref, start, stop, super1, args.name1))
-            genos2 = set(generate_genotypes(ref, start, stop, super2, args.name2))
+            try:
+                genos1 = set(generate_genotypes(ref, start, stop, super1, args.name1, args.debug))
+                genos2 = set(generate_genotypes(ref, start, stop, super2, args.name2, args.debug))
 
-            # Test whether genotype sets intersect
-            match  = bool(genos1 & genos2)
+                # Test whether genotype sets intersect
+                match  = bool(genos1 & genos2)
+
+                status = 'MATCH!' if match else 'MISMATCH!'
+            except ValueError:
+                status = 'ERROR!'
+                genos1 = genos2 = set()
 
             # The hard work is done.  The rest is just output and formatting...
-            status = 'MATCH!' if match else 'MISMATCH!'
             print('{}:[{:d}-{:d}): {}'.format(chrom, start, stop, status))
 
             for i, superlocus in enumerate([super1, super2], 1):
                 for locus in superlocus:
                     print('  VCF{:d}: {}'.format(i, locus.record), end='')
             print()
+
+            if status == 'ERROR!':
+                traceback.print_exc(file=sys.stdout)
+                print()
 
             for i, (name, superlocus) in enumerate([(args.name1, super1), (args.name2, super2)], 1):
                 for locus in superlocus:
