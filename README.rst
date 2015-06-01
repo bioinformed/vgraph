@@ -18,10 +18,10 @@ callers.  However, output is still very verbose, diagnostic heavy and
 doesn't have built-in aggregation, but is usable with basic technical
 knowledge.  Please treat these versions as "alpha" quality that are suitable
 for evaluation by other tool developers and skilled technical users.  The
-first beta version will be ready in a couple of weeks and will be more "end
-user" friendly and will have pretty output and nice aggregation and summary
-output statistics.  A production-ready release for the masses is planned by
-the upcoming GA4GH meeting in Leiden (6/9/2015 - 6/11/2015).
+first beta version will be ready shortly and will be more "end user"
+friendly and will have pretty output and nice aggregation and summary output
+statistics.  A production-ready release for the masses is planned by the
+upcoming GA4GH meeting in Leiden (6/9/2015 - 6/11/2015).
 
 Input
 -----
@@ -48,7 +48,7 @@ Usage
 ``vgraph`` takes the following command line parameters::
 
     usage: vgraph [-h] [--name1 N] [--name2 N] [-p N] [-i INCLUDE] [-o OUT_VCF]
-                  --reference FASTA [--profile]
+                  --reference FASTA [--debug] [--profile]
                   vcf1 vcf2
 
     positional arguments:
@@ -67,6 +67,7 @@ Usage
       -o OUT_VCF, --out-vcf OUT_VCF
                             Output VCF (- for stdout).
       --reference FASTA     Reference FASTA+FAI
+      --debug               Output extremely verbose debugging information
       --profile             Profile code performance
 
 Installation
