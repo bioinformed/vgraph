@@ -58,21 +58,23 @@ def demultiplex_records(n, records):
     return demux
 
 
-def intersect(record_list, min_distance=0):
+def intersect(record_list, min_distance=0, interval_func=attrgetter('start', 'stop')):
     n = len(record_list)
     start = stop = 0
     records = []
 
-    for i, rec in iter_merge(record_list, key=attrgetter('start')):
-        if not records or min_distance < rec.start - stop:
+    for i, rec in iter_merge(record_list, key=interval_func):
+        rec_start, rec_stop = interval_func(rec)
+
+        if not records or min_distance < rec_start - stop:
             if records:
                 yield start, stop, demultiplex_records(n, records)
                 records = []
-            start, stop = rec.start, rec.stop
+            start, stop = rec_start, rec_stop
 
-        assert rec.start >= start
+        assert rec_start >= start
         records.append((i, rec))
-        stop = max(stop, rec.stop)
+        stop = max(stop, rec_stop)
 
     if records:
         yield start, stop, demultiplex_records(n, records)
