@@ -1,3 +1,20 @@
+# -*- coding: utf-8 -*-
+
+## Copyright 2015 Kevin B Jacobs
+##
+## Licensed under the Apache License, Version 2.0 (the "License"); you may
+## not use this file except in compliance with the License.  You may obtain
+## a copy of the License at
+##
+##        http://www.apache.org/licenses/LICENSE-2.0
+##
+## Unless required by applicable law or agreed to in writing, software
+## distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+## WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+## License for the specific language governing permissions and limitations
+## under the License.
+
+
 from __future__       import division, print_function
 
 from itertools        import combinations, combinations_with_replacement
@@ -55,6 +72,7 @@ def make_vargraph(ref, start, stop, loci, name):
     for locus in sorted(loci, key=NormalizedLocus.left_order_key):
         sample = locus.record.samples[name]
         indices = sample.allele_indices
+        phased = sample.phased
         left = locus.left
 
         if left.start >= pos:
@@ -71,7 +89,7 @@ def make_vargraph(ref, start, stop, loci, name):
                 vg.zygosity_constraints[node] = indices.count(i)
 
                 # Add phase constraint for hets only
-                if sample.phased and len(indices) == 2 and indices[0] != indices[1]:
+                if phased and len(indices) == 2 and indices[0] != indices[1]:
                     phasename = 'M' if indices[0] == i else 'F'
                     vg.phase_constraints[phasename].add(node)
             else:
