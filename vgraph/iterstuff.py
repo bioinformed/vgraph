@@ -1,9 +1,33 @@
+# -*- coding: utf-8 -*-
+
+## Copyright 2015 Kevin B Jacobs
+##
+## Licensed under the Apache License, Version 2.0 (the "License"); you may
+## not use this file except in compliance with the License.  You may obtain
+## a copy of the License at
+##
+##        http://www.apache.org/licenses/LICENSE-2.0
+##
+## Unless required by applicable law or agreed to in writing, software
+## distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+## WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+## License for the specific language governing permissions and limitations
+## under the License.
+
+
+import sys
 import random
 import collections
 
 from operator import itemgetter, mul
-from itertools import (chain, combinations, count, cycle, groupby, ifilterfalse, imap,
-                       islice, izip, izip_longest, repeat, starmap, tee)
+from itertools import chain, combinations, count, cycle, groupby, islice, repeat, starmap, tee
+
+PY3 = sys.version_info[0] == 3
+
+if PY3:
+    from itertools import filterfalse, zip_longest
+else:
+    from itertools import ifilterfalse as filterfalse, izip as zip, izip_longest as zip_longest, imap as map
 
 
 # Python itertools recipes
@@ -16,7 +40,7 @@ def take(n, iterable):
 
 def tabulate(function, start=0):
     "Return function(0), function(1), ..."
-    return imap(function, count(start))
+    return map(function, count(start))
 
 
 def consume(iterator, n):
@@ -37,7 +61,7 @@ def nth(iterable, n, default=None):
 
 def quantify(iterable, pred=bool):
     "Count how many times the predicate is true"
-    return sum(imap(pred, iterable))
+    return sum(map(pred, iterable))
 
 
 def padnone(iterable):
@@ -54,7 +78,7 @@ def ncycles(iterable, n):
 
 
 def dotproduct(vec1, vec2):
-    return sum(imap(mul, vec1, vec2))
+    return sum(map(mul, vec1, vec2))
 
 
 def flatten(listOfLists):
@@ -76,7 +100,7 @@ def pairwise(iterable):
     "s -> (s0,s1), (s1,s2), (s2, s3), ..."
     a, b = tee(iterable)
     next(b, None)
-    return izip(a, b)
+    return zip(a, b)
 
 
 def grouper(iterable, n, fillvalue=None):
@@ -87,14 +111,22 @@ def grouper(iterable, n, fillvalue=None):
     ['ABC', 'DEF', 'Gxx']
     """
     args = [iter(iterable)] * n
-    return izip_longest(fillvalue=fillvalue, *args)
+    return zip_longest(fillvalue=fillvalue, *args)
+
+
+if PY3:
+    def getnext(it):
+        return it.__next__
+else:
+    def getnext(it):
+        return it.next
 
 
 def roundrobin(*iterables):
     "roundrobin('ABC', 'D', 'EF') --> A D E B F C"
     # Recipe credited to George Sakkis
     pending = len(iterables)
-    nexts = cycle(iter(it).next for it in iterables)
+    nexts = cycle(getnext(iter(it)) for it in iterables)
     while pending:
         try:
             for next in nexts:
@@ -107,7 +139,7 @@ def roundrobin(*iterables):
 def roundrobin2(*iterables):
     "roundrobin('ABC', 'D', 'EF') --> A D E B F C"
     sentinel = object()
-    return (x for x in chain(*izip_longest(fillvalue=sentinel, *iterables)) if x is not sentinel)
+    return (x for x in chain(*zip_longest(fillvalue=sentinel, *iterables)) if x is not sentinel)
 
 
 def powerset(iterable):
@@ -127,7 +159,7 @@ def unique_everseen(iterable, key=None):
     seen = set()
     seen_add = seen.add
     if key is None:
-        for element in ifilterfalse(seen.__contains__, iterable):
+        for element in filterfalse(seen.__contains__, iterable):
             seen_add(element)
             yield element
     else:
@@ -147,7 +179,7 @@ def unique_justseen(iterable, key=None):
     >>> ''.join(unique_justseen('ABBCcAD', str.lower))
     'ABCAD'
     """
-    return imap(next, imap(itemgetter(1), groupby(iterable, key)))
+    return map(next, map(itemgetter(1), groupby(iterable, key)))
 
 
 def iter_except(func, exception, first=None):
@@ -177,7 +209,7 @@ def iter_except(func, exception, first=None):
 
 def random_product(*args, **kwds):
     "Random selection from itertools.product(*args, **kwds)"
-    pools = map(tuple, args) * kwds.get('repeat', 1)
+    pools = list(map(tuple, args)) * kwds.get('repeat', 1)
     return tuple(random.choice(pool) for pool in pools)
 
 
@@ -269,7 +301,7 @@ def chunked(iterable, n):
     If the length of ``iterable`` is not evenly divisible by ``n``, the last
     returned list will be shorter.
     """
-    for group in izip_longest(*[iter(iterable)] * n, fillvalue=_nothing):
+    for group in zip_longest(*[iter(iterable)] * n, fillvalue=_nothing):
         if group[-1] is _nothing:
             # If this is the last group, shuck off the padding:
             group = group[:group.index(_nothing)]
@@ -281,13 +313,13 @@ def ilen(iterable):
     return sum(1 for _ in iterable)
 
 
-# Helpers for izip_exact
+# Helpers for zip_exact
 
 class LengthMismatch(Exception):
     pass
 
 
-def _izip_exact_thow():
+def _zip_exact_thow():
     raise LengthMismatch
     yield None  # unreachable
 
@@ -295,7 +327,7 @@ def _izip_exact_thow():
 def _zip_exact_check(rest):
     for i in rest:
         try:
-            i.next()
+            next(i)
         except LengthMismatch:
             pass
         else:
@@ -304,9 +336,9 @@ def _zip_exact_check(rest):
     yield None  # unreachable
 
 
-def izip_exact(*iterables):
+def zip_exact(*iterables):
     """
-    izip_exact(iter1 [,iter2 [...]]) --> iterator object
+    zip_exact(iter1 [,iter2 [...]]) --> iterator object
 
     Return an iterator whose .next() method returns a tuple where the i-th
     element comes from the i-th iterable argument.  The .next() method
@@ -314,16 +346,16 @@ def izip_exact(*iterables):
     exhausted.  If all sequences are exhausted a StopIteration exception is
     raised, otherwise a LengthMismatch exception is raised.
 
-    Works like itertools.izip(), but throws a LengthMismatch exception if any
+    Works like itertools.zip(), but throws a LengthMismatch exception if any
     iterable's length differs.
 
     Zero length iterable lists return iter(iterables).  Unit length iterables
-    return iter(iterables[0]).  Otherwise an izip object is returned.
+    return iter(iterables[0]).  Otherwise an zip object is returned.
 
     If the len() of all iterables is available and match, then this function
-    returns izip(*iterables).  In the length of any iterable cannot be
+    returns zip(*iterables).  In the length of any iterable cannot be
     determined, then sentinel objects are appended to each iterable and an
-    izip object of these augmented iterables is returned.  If the length a
+    zip object of these augmented iterables is returned.  If the length a
     proper subset of iterables can be determined, the second strategy is
     employed, even if known lengths do not match.  This is in anticipation of
     iterable side-effects that may ultimately balance the lengths.
@@ -331,37 +363,37 @@ def izip_exact(*iterables):
     Inspired largely by Peter Otten's zip_exc, modified to check lengths.
     (http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/497006)
 
-    >>> list(izip_exact())
+    >>> list(zip_exact())
     []
-    >>> list(izip_exact([]))
+    >>> list(zip_exact([]))
     []
-    >>> list(izip_exact((), (), ()))
+    >>> list(zip_exact((), (), ()))
     []
 
-    >>> list(izip_exact("abc", range(3)))
+    >>> list(zip_exact("abc", range(3)))
     [('a', 0), ('b', 1), ('c', 2)]
 
-    >>> list(izip_exact("", range(3)))
+    >>> list(zip_exact("", range(3)))
     Traceback (most recent call last):
          ...
     LengthMismatch
 
-    >>> list(izip_exact(range(3), ()))
+    >>> list(zip_exact(range(3), ()))
     Traceback (most recent call last):
          ...
     LengthMismatch
 
-    >>> list(izip_exact(range(3), range(2), range(4)))
+    >>> list(zip_exact(range(3), range(2), range(4)))
     Traceback (most recent call last):
          ...
     LengthMismatch
 
-    >>> items = izip_exact(iter(range(3)), range(2), range(4))
-    >>> items.next()
+    >>> items = zip_exact(iter(range(3)), range(2), range(4))
+    >>> next(items)
     (0, 0, 0)
-    >>> items.next()
+    >>> next(items)
     (1, 1, 1)
-    >>> items.next()
+    >>> next(items)
     Traceback (most recent call last):
          ...
     LengthMismatch
@@ -377,14 +409,14 @@ def izip_exact(*iterables):
     try:
         n = len(first)
         if all(len(i) == n for i in rest):
-            return izip(*iterables)
+            return zip(*iterables)
     except (TypeError, AttributeError):
         pass
 
     # Must use sentinel objects to enforce length equality
-    rest  = [chain(i, _izip_exact_thow()) for i in rest]
+    rest  = [chain(i, _zip_exact_thow()) for i in rest]
     first = chain(first, _zip_exact_check(rest))
-    return izip(*[first] + rest)
+    return zip(*[first] + rest)
 
 
 class OrderError(ValueError):
@@ -443,13 +475,13 @@ def sort_almost_sorted(iterable, key=None, windowsize=1000, stable=True):
     if key is not None:
         decorated = ((key(item), i, item) for i, item in enumerate(iterable))
         ordered   = _sort_almost_sorted(decorated, windowsize)
-        return imap(itemgetter(2), ordered)
+        return map(itemgetter(2), ordered)
 
     # Otherwise, use a similar method as above to ensure stability
     elif stable:
         decorated = ((item, i) for i, item in enumerate(iterable))
         ordered   = _sort_almost_sorted(decorated, windowsize)
-        return imap(itemgetter(0), ordered)
+        return map(itemgetter(0), ordered)
 
     # Unstable, undecorated sort
     else:
