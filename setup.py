@@ -1,9 +1,26 @@
+# -*- coding: utf-8 -*-
+
+## Copyright 2015 Kevin B Jacobs
+##
+## Licensed under the Apache License, Version 2.0 (the "License"); you may
+## not use this file except in compliance with the License.  You may obtain
+## a copy of the License at
+##
+##        http://www.apache.org/licenses/LICENSE-2.0
+##
+## Unless required by applicable law or agreed to in writing, software
+## distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+## WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+## License for the specific language governing permissions and limitations
+## under the License.
+
+
 from setuptools import setup, find_packages
 from Cython.Distutils import build_ext
 from distutils.extension import Extension
 
 install_requires = ['Cython>=0.22', 'nose', 'pysam>=0.8.3']
-setup_requires   = ['pysam>=0.8.3']
+setup_requires   = ['setuptools_scm', 'pysam>=0.8.3']
 tests_require    = ['coverage']
 
 
@@ -27,7 +44,7 @@ Topic :: Scientific/Engineering :: Bioinformatics
 if __name__ == '__main__':
     setup(
         name = 'vgraph',
-        version = '0.2',
+        use_scm_version=True,
         description = 'Graph-based variant normalization and comparison tools',
         url = 'https://github.com/bioinformed/vgraph',
         author = 'Kevin Jacobs',
