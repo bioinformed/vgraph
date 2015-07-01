@@ -56,3 +56,6 @@ docs/build/
 
 # PyBuilder
 target/
+
+# Temp files
+*~
