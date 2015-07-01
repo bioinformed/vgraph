@@ -1,6 +1,26 @@
+# -*- coding: utf-8 -*-
+
+## Copyright 2015 Kevin B Jacobs
+##
+## Licensed under the Apache License, Version 2.0 (the "License"); you may
+## not use this file except in compliance with the License.  You may obtain
+## a copy of the License at
+##
+##        http://www.apache.org/licenses/LICENSE-2.0
+##
+## Unless required by applicable law or agreed to in writing, software
+## distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+## WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+## License for the specific language governing permissions and limitations
+## under the License.
+
+
 '''
 Normalization of alleles relative to a reference sequence
 '''
+
+
+from __future__       import division, print_function
 
 import sys
 
@@ -11,7 +31,7 @@ from itertools   import chain
 normalized_alleles = namedtuple('shuffled_alleles', 'start stop alleles')
 
 
-cpdef trim_common_suffixes(strs, int min_len=0):
+cpdef trim_common_suffixes(strs, int min_len=0, int max_trim=0):
     '''trim common suffixes'''
 
     if len(strs) < 2:
@@ -19,7 +39,7 @@ cpdef trim_common_suffixes(strs, int min_len=0):
 
     rev_strs = [ s[::-1] for s in strs ]
 
-    trimmed, rev_strs = trim_common_prefixes(rev_strs, min_len)
+    trimmed, rev_strs = trim_common_prefixes(rev_strs, min_len, max_trim)
 
     if trimmed:
         strs = [ s[::-1] for s in rev_strs ]
@@ -27,7 +47,7 @@ cpdef trim_common_suffixes(strs, int min_len=0):
     return trimmed, strs
 
 
-cpdef trim_common_prefixes(strs, int min_len=0):
+cpdef trim_common_prefixes(strs, int min_len=0, int max_trim=0):
     '''trim common prefixes'''
 
     cdef int i, trimmed = 0
@@ -41,6 +61,9 @@ cpdef trim_common_prefixes(strs, int min_len=0):
             if s1[i] != s2[i]:
                 break
             trimmed = i + 1
+
+    if 0 < max_trim < trimmed:
+        trimmed = max_trim
 
     if trimmed > 0:
         strs = [ s[trimmed:] for s in strs ]
@@ -69,6 +92,11 @@ cdef normalize_alleles_left(bytes ref, int start, int stop, alleles, int bound, 
     if len(alleles) < 2 or start <= 0 or start <= 0:
         return normalized_alleles(start, stop, alleles)
 
+    # STEP 0: Trim prefixes if needed to clear bound
+    if start < bound:
+        trimmed, alleles = trim_common_prefixes(alleles, max_trim=bound - start)
+        start += trimmed
+
     # STEP 1: Trim common suffix
     trimmed, alleles = trim_common_suffixes(alleles)
     stop -= trimmed
@@ -77,7 +105,7 @@ cdef normalize_alleles_left(bytes ref, int start, int stop, alleles, int bound, 
     trimmed, alleles = trim_common_prefixes(alleles)
     start += trimmed
 
-    #assert bound <= start,'start={:d}, left bound={:d}'.format(start, bound)
+    #assert bound <= start,'start={:d}, left bound={:d} alleles={}'.format(start, bound, alleles)
 
     # STEP 3: While a null allele exists, left shuffle by prepending alleles
     #         with reference and trimming common suffixes
@@ -114,6 +142,11 @@ cdef normalize_alleles_right(bytes ref, int start, int stop, alleles, int bound,
 
     if len(alleles) < 2 or stop >= chrom_stop:
         return normalized_alleles(start, stop, alleles)
+
+    # STEP 0: Trim suffixes if needed to clear bound
+    if stop > bound:
+        trimmed, alleles = trim_common_suffixes(alleles, max_trim=stop - bound)
+        stop -= trimmed
 
     # STEP 1: Trim common prefix
     trimmed, alleles = trim_common_prefixes(alleles)
