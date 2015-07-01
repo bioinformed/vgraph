@@ -22,18 +22,19 @@ from __future__ import division, print_function
 import sys
 import traceback
 
-from os.path          import expanduser
-from argparse         import ArgumentParser
-from collections      import defaultdict
-from operator         import attrgetter
+from os.path            import expanduser
+from argparse           import ArgumentParser
+from collections        import defaultdict
+from operator           import attrgetter
 
-from pysam            import VariantFile, Fastafile
+from pysam              import VariantFile, Fastafile
 
-from vgraph.bed       import BedFile
-from vgraph.norm      import NormalizedLocus
-from vgraph.intervals import intersect
-from vgraph.iterstuff import sort_almost_sorted, is_empty_iter
-from vgraph.vargraph  import generate_genotypes
+from vgraph.bed         import BedFile
+from vgraph.norm        import NormalizedLocus
+from vgraph.intervals   import intersect
+from vgraph.iterstuff   import sort_almost_sorted, is_empty_iter
+#from vgraph.graphmatch import generate_genotypes
+from vgraph.linearmatch import generate_genotypes
 
 
 def valid_alleles(alleles):
@@ -153,9 +154,18 @@ def main(args):
                 genos2 = set(generate_genotypes(ref, start, stop, super2, args.name2, args.debug))
 
                 # Test whether genotype sets intersect
-                match  = bool(genos1 & genos2)
-
-                status = 'MATCH!' if match else 'MISMATCH!'
+                if not genos1 or not genos2:
+                    status = 'INVALID!'
+                elif genos1.isdisjoint(genos2):
+                    status = 'MISMATCH!'
+                elif genos1 == genos2:
+                    status = 'MATCH! exact match'
+                elif genos1 < genos2:
+                    status = 'MATCH! vcf2 less constrained'
+                elif genos1 > genos2:
+                    status = 'MATCH! vcf1 less constrained'
+                else:
+                    status = 'MATCH! different constraints'
             except ValueError:
                 status = 'ERROR!'
                 genos1 = genos2 = set()
