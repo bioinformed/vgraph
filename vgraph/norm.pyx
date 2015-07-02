@@ -234,15 +234,16 @@ class NormalizedLocus(object):
         self.recnum = recnum
         self.record = record
 
-        start, stop, alleles = normalize_alleles(ref, record.start, record.stop, record.alleles, left=True, shuffle=False)
+        record_alleles = record.alleles
+        start, stop, alleles = normalize_alleles(ref, record.start, record.stop, record_alleles, left=True, shuffle=False)
         refa, alts = alleles[0], alleles[1:]
 
         # Left shuffle locus with all alt alleles considered simultaneously and left bound of previous locus
         # n.b. use original record alleles to enforce bound
-        self.left = normalize_alleles(ref, record.start, record.stop, record.alleles, bound=left_bound, left=True)
+        self.left = normalize_alleles(ref, record.start, record.stop, record_alleles, bound=left_bound, left=True)
 
         # Right shuffle locus with all alt alleles considered simultaneously
-        self.right = normalize_alleles(ref, start, stop, alleles, left=False)
+        self.right = normalize_alleles(ref, record.start, record.stop, record_alleles, left=False)
 
         # Minimum start and stop coordinates over each alt allele
         # n.b. may be broader than with all alleles or with bounds
