@@ -71,6 +71,60 @@ cpdef trim_common_prefixes(strs, int min_len=0, int max_trim=0):
     return trimmed, strs
 
 
+cdef shuffle_left(bytes ref, int *start, int *stop, alleles, int bound, int ref_step):
+    cdef int trimmed, step, left
+
+    while '' in alleles and start[0] > bound:
+        step = min(ref_step, start[0] - bound)
+
+        r = ref[start[0] - step:start[0]].upper()
+        new_alleles = [ r+a for a in alleles ]
+
+        trimmed, new_alleles = trim_common_suffixes(new_alleles)
+
+        if not trimmed:
+            break
+
+        start[0] -= trimmed
+        stop[0]  -= trimmed
+
+        if trimmed == step:
+            alleles = new_alleles
+        else:
+            left    = step - trimmed
+            alleles = [ a[left:] for a in new_alleles ]
+            break
+
+    return alleles
+
+
+cdef shuffle_right(bytes ref, int *start, int *stop, alleles, int bound, int ref_step):
+    cdef int trimmed, step, left
+
+    while '' in alleles and stop[0] < bound:
+        step = min(ref_step, bound - stop[0])
+
+        r = ref[stop[0]:stop[0]+step].upper()
+        new_alleles = [ a+r for a in alleles ]
+
+        trimmed, new_alleles = trim_common_prefixes(new_alleles)
+
+        if not trimmed:
+            break
+
+        start[0] += trimmed
+        stop[0]  += trimmed
+
+        if trimmed == step:
+            alleles = new_alleles
+        else:
+            left    = step - trimmed
+            alleles = [ a[:-left] for a in new_alleles ]
+            break
+
+    return alleles
+
+
 cpdef normalize_alleles(bytes ref, int start, int stop, alleles, int bound=-1, int ref_step=24, left=True, bint shuffle=True):
     if left:
         if bound < 0:
@@ -105,30 +159,16 @@ cdef normalize_alleles_left(bytes ref, int start, int stop, alleles, int bound, 
     trimmed, alleles = trim_common_prefixes(alleles)
     start += trimmed
 
-    #assert bound <= start,'start={:d}, left bound={:d} alleles={}'.format(start, bound, alleles)
+    # STEP 3: Force shuffle right if start doesn't clear bound
+    if start < bound:
+        alleles = shuffle_right(ref, &start, &stop, alleles, stop + bound - start, ref_step)
 
-    # STEP 3: While a null allele exists, left shuffle by prepending alleles
+    assert bound <= start,'start={:d}, left bound={:d} alleles={}'.format(start, bound, alleles)
+
+    # STEP 4: While a null allele exists, left shuffle by prepending alleles
     #         with reference and trimming common suffixes
-    while shuffle and '' in alleles and start > bound:
-        step = min(ref_step, start - bound)
-
-        r = ref[start - step:start].upper()
-        new_alleles = [ r+a for a in alleles ]
-
-        trimmed, new_alleles = trim_common_suffixes(new_alleles)
-
-        if not trimmed:
-            break
-
-        start -= trimmed
-        stop  -= trimmed
-
-        if trimmed == step:
-            alleles = new_alleles
-        else:
-            left    = step - trimmed
-            alleles = [ a[left:] for a in new_alleles ]
-            break
+    if shuffle:
+        alleles = shuffle_left(ref, &start, &stop, alleles, bound, ref_step)
 
     return normalized_alleles(start, stop, tuple(alleles))
 
@@ -156,30 +196,16 @@ cdef normalize_alleles_right(bytes ref, int start, int stop, alleles, int bound,
     trimmed, alleles = trim_common_suffixes(alleles)
     stop -= trimmed
 
-    #assert bound >= stop,'stop={:d}, right bound={:d}'.format(stop, bound)
+    # STEP 3: Force shuffle left if stop doesn't clear bound
+    if stop > bound:
+        alleles = shuffle_left(ref, &start, &stop, alleles, start - stop - bound, ref_step)
 
-    # STEP 3: While a null allele exists, right shuffle by appending alleles
+    assert bound >= stop,'stop={:d}, right bound={:d}'.format(stop, bound)
+
+    # STEP 4: While a null allele exists, right shuffle by appending alleles
     #         with reference and trimming common prefixes
-    while shuffle and '' in alleles and stop < bound:
-        step = min(ref_step, bound - stop)
-
-        r = ref[stop:stop+step].upper()
-        new_alleles = [ a+r for a in alleles ]
-
-        trimmed, new_alleles = trim_common_prefixes(new_alleles)
-
-        if not trimmed:
-            break
-
-        start += trimmed
-        stop  += trimmed
-
-        if trimmed == step:
-            alleles = new_alleles
-        else:
-            left    = step - trimmed
-            alleles = [ a[:-left] for a in new_alleles ]
-            break
+    if shuffle:
+        alleles = shuffle_right(ref, &start, &stop, alleles, bound, ref_step)
 
     return normalized_alleles(start, stop, tuple(alleles))
 
@@ -212,7 +238,8 @@ class NormalizedLocus(object):
         refa, alts = alleles[0], alleles[1:]
 
         # Left shuffle locus with all alt alleles considered simultaneously and left bound of previous locus
-        self.left = normalize_alleles(ref, start, stop, alleles, bound=left_bound, left=True)
+        # n.b. use original record alleles to enforce bound
+        self.left = normalize_alleles(ref, record.start, record.stop, record.alleles, bound=left_bound, left=True)
 
         # Right shuffle locus with all alt alleles considered simultaneously
         self.right = normalize_alleles(ref, start, stop, alleles, left=False)
