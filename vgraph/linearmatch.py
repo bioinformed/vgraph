@@ -15,23 +15,23 @@
 ## under the License.
 
 
-from __future__       import division, print_function
+from __future__  import division, print_function
 
-from itertools        import combinations, combinations_with_replacement
-from collections      import defaultdict, Counter
+from itertools   import combinations, combinations_with_replacement
+from collections import defaultdict, Counter
 
-from vgraph.norm      import NormalizedLocus
+from .norm       import NormalizedLocus
 
 
 class RefAllele(object):
-    __slots__ = ('seq', 'phase')
+    __slots__ = ('seq',)
+    phase = None
 
-    def __init__(self, seq, phase):
+    def __init__(self, seq):
         self.seq = seq
-        self.phase = phase
 
     def __repr__(self):
-        return 'RefAllele({}, {})'.format(self.seq, self.phase)
+        return 'RefAllele({})'.format(self.seq)
 
 
 class AltAllele(object):
@@ -46,12 +46,23 @@ class AltAllele(object):
 
 
 def is_valid_geno(zygosity_constraints, paths):
-    observed_zygosity = Counter(p for path in paths for p in path if isinstance(p, AltAllele))
+    observed_zygosity = defaultdict(int)
+    for allele in paths:
+        if isinstance(allele, AltAllele):
+            observed_zygosity[allele] += 1
     return zygosity_constraints == observed_zygosity
 
 
 def get_path_seq(path):
     return ''.join(p.seq for p in path)
+
+
+def get_geno(path1, path2):
+    seq1 = get_path_seq(path1)
+    seq2 = get_path_seq(path2)
+    if seq2 > seq1:
+        seq1, seq2 = seq2, seq1
+    return seq1, seq2
 
 
 def generate_linear_graph(ref, start, stop, loci, name):
@@ -66,7 +77,7 @@ def generate_linear_graph(ref, start, stop, loci, name):
         left = locus.left
 
         if pos < left.start:
-            graph.append([RefAllele(ref[pos:left.start], None)])
+            graph.append([RefAllele(ref[pos:left.start])])
         elif pos > left.start:
             raise ValueError('unordered locus previous start={}, current start={}'.format(pos, left.start))
 
@@ -75,7 +86,7 @@ def generate_linear_graph(ref, start, stop, loci, name):
         pos = left.stop
 
     if pos < stop:
-        graph.append([RefAllele(ref[pos:stop], None)])
+        graph.append([RefAllele(ref[pos:stop])])
 
     return graph, zygosity_constraints
 
@@ -87,6 +98,7 @@ def _make_alleles(ref, locus, indices, phased, zygosity_constraints):
     for i in index_set:
         # Alt allele at phased and heterozygous locus
         if i and phased and het:
+            # each alt allele is distinct
             for phasename in (j for j, idx in enumerate(indices) if i == idx):
                 allele = AltAllele(locus.alleles[i], phasename)
                 zygosity_constraints[allele] = 1
@@ -94,6 +106,7 @@ def _make_alleles(ref, locus, indices, phased, zygosity_constraints):
 
         # Alt allele at unphased or homozygous locus
         elif i:
+            # single alt allele
             allele = AltAllele(locus.alleles[i], None)
             zygosity_constraints[allele] = indices.count(i)
             yield allele
@@ -101,7 +114,7 @@ def _make_alleles(ref, locus, indices, phased, zygosity_constraints):
         # Ref allele
         else:
             assert locus.alleles[0] == ref[locus.start:locus.stop]
-            yield RefAllele(ref[locus.start:locus.stop], None)
+            yield RefAllele(ref[locus.start:locus.stop])
 
 
 def generate_paths(graph):
@@ -181,7 +194,7 @@ def generate_genotypes(ref, start, stop, loci, name, debug=False):
         pairs = combinations_with_replacement(paths, 2)
 
     valid_pairs = [pair for pair in pairs if is_valid_geno(zygosity_constraints, pair)]
-    valid_genos = sorted(set(tuple(sorted([get_path_seq(p1), get_path_seq(p2)])) for p1, p2 in valid_pairs))
+    valid_genos = sorted(set(get_geno(p1, p2) for p1, p2 in valid_pairs))
 
     if debug:
         print('PATHS:')
