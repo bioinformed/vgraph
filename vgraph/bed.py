@@ -20,7 +20,7 @@ try:
 except ImportError:
     pass
 
-from vgraph.smartfile import smartfile
+from .smartfile import smartfile
 
 
 class BedRecord(object):
