@@ -18,9 +18,7 @@
 from __future__  import division, print_function
 
 from itertools   import combinations, combinations_with_replacement
-from collections import defaultdict, Counter
-
-from .norm       import NormalizedLocus
+from collections import defaultdict
 
 
 class RefAllele(object):
@@ -31,7 +29,7 @@ class RefAllele(object):
         self.seq = seq
 
     def __repr__(self):
-        return 'RefAllele({})'.format(self.seq)
+        return 'RefAllele({})'.format(self.seq or '-')
 
 
 class AltAllele(object):
@@ -42,56 +40,60 @@ class AltAllele(object):
         self.phase = phase
 
     def __repr__(self):
-        return 'AltAllele({}, {})'.format(self.seq, self.phase)
+        if self.phase is None:
+            return 'AltAllele({})'.format(self.seq or '-')
+        else:
+            return 'AltAllele({}, phase={})'.format(self.seq or '-', self.phase)
 
 
-def is_valid_geno(zygosity_constraints, paths):
+def is_valid_geno(zygosity_constraints, alts1, alts2):
     observed_zygosity = defaultdict(int)
-    for allele in paths:
+    for allele in alts1:
+        if isinstance(allele, AltAllele):
+            observed_zygosity[allele] += 1
+    for allele in alts2:
         if isinstance(allele, AltAllele):
             observed_zygosity[allele] += 1
     return zygosity_constraints == observed_zygosity
 
 
-def get_path_seq(path):
-    return ''.join(p.seq for p in path)
-
-
-def get_geno(path1, path2):
-    seq1 = get_path_seq(path1)
-    seq2 = get_path_seq(path2)
-    if seq2 > seq1:
-        seq1, seq2 = seq2, seq1
-    return seq1, seq2
-
-
-def generate_linear_graph(ref, start, stop, loci, name):
+def generate_graph(ref, start, stop, loci, name, debug=False):
     zygosity_constraints = defaultdict(int)
     graph = []
     pos = start
 
-    for locus in sorted(loci, key=NormalizedLocus.left_order_key):
+    for locus in loci:
         sample = locus.record.samples[name]
         indices = sample.allele_indices
         phased = sample.phased
         left = locus.left
+        assert ref[left.start:left.stop] == left.alleles[0]
 
         if pos < left.start:
             graph.append([RefAllele(ref[pos:left.start])])
         elif pos > left.start:
             raise ValueError('unordered locus previous start={}, current start={}'.format(pos, left.start))
 
-        alleles = _make_alleles(ref, left, indices, phased, zygosity_constraints)
+        alleles = _make_alleles(left.alleles, indices, phased, zygosity_constraints)
         graph.append(list(alleles))
         pos = left.stop
 
     if pos < stop:
         graph.append([RefAllele(ref[pos:stop])])
 
+    if debug:
+        print('-' * 80)
+        print('linear VG [{:d}, {:d})'.format(start, stop))
+        for i, alleles in enumerate(graph, 1):
+            print('  {}: {}'.format(i, alleles))
+        print()
+        print('ZYGOSITY CONSTRAINTS:', zygosity_constraints)
+        print()
+
     return graph, zygosity_constraints
 
 
-def _make_alleles(ref, locus, indices, phased, zygosity_constraints):
+def _make_alleles(alleles, indices, phased, zygosity_constraints):
     index_set = set(indices)
     het = len(index_set) > 1
 
@@ -100,35 +102,36 @@ def _make_alleles(ref, locus, indices, phased, zygosity_constraints):
         if i and phased and het:
             # each alt allele is distinct
             for phasename in (j for j, idx in enumerate(indices) if i == idx):
-                allele = AltAllele(locus.alleles[i], phasename)
+                allele = AltAllele(alleles[i], phasename)
                 zygosity_constraints[allele] = 1
                 yield allele
 
         # Alt allele at unphased or homozygous locus
         elif i:
             # single alt allele
-            allele = AltAllele(locus.alleles[i], None)
+            allele = AltAllele(alleles[i], None)
             zygosity_constraints[allele] = indices.count(i)
             yield allele
 
         # Ref allele
         else:
-            assert locus.alleles[0] == ref[locus.start:locus.stop]
-            yield RefAllele(ref[locus.start:locus.stop])
+            yield RefAllele(alleles[0])
 
 
-def generate_paths(graph):
-    # queue of (seq, path, phasesets, antiphasesets)
+def generate_paths(graph, debug=False):
+    # Initial path of (seq, alts, phasesets, antiphasesets)
     paths = [('', [], set(), set())]
 
     for alleles in graph:
         paths = _extend_paths(paths, alleles)
 
-    return (p[1] for p in paths)
+    paths = list(tuple(p[:2]) for p in paths)
+
+    return paths
 
 
 def _extend_paths(inpaths, alleles):
-    for seq, path, phasesets, antiphasesets in inpaths:
+    for seq, alts, phasesets, antiphasesets in inpaths:
         # Set of new phase sets being added from this allele
         # nb: must occur prior to pruning
         add_phasesets = set(allele.phase for allele in alleles if allele.phase and allele.phase not in phasesets)
@@ -139,7 +142,8 @@ def _extend_paths(inpaths, alleles):
         for allele in pruned_alleles:
             new_phasesets = _update_phasesets(phasesets, allele.phase)
             new_antiphasesets = _update_antiphasesets(antiphasesets, add_phasesets, allele.phase)
-            yield seq + allele.seq, path + [allele], new_phasesets, new_antiphasesets
+            new_alts = alts + [allele] if isinstance(allele, AltAllele) else alts
+            yield seq + allele.seq, new_alts, new_phasesets, new_antiphasesets
 
 
 def _apply_phase_constrants(alleles, phasesets, antiphasesets):
@@ -172,47 +176,55 @@ def _update_antiphasesets(antiphasesets, add_phasesets, phaseset):
     return antiphasesets
 
 
-def generate_genotypes(ref, start, stop, loci, name, debug=False):
-    graph, zygosity_constraints = generate_linear_graph(ref, start, stop, loci, name)
+def intersect_paths(paths1, paths2):
+    if not isinstance(paths1, list):
+        paths1 = list(paths1)
+    if not isinstance(paths2, list):
+        paths2 = list(paths2)
 
-    if debug:
-        print('-' * 80)
-        print('linear VG [{:d}, {:d})'.format(start, stop))
-        for i, alleles in enumerate(graph, 1):
-            print('  {}: {}'.format(i, alleles))
-        print()
-        print('ZYGOSITY CONSTRAINTS:', zygosity_constraints)
-        print()
+    index1 = set(seq for seq, alts in paths1)
+    index  = set(seq for seq, alts in paths2 if seq in index1)
 
-    paths = map(tuple, generate_paths(graph))
+    paths1 = (p for p in paths1 if p[0] in index)
+    paths2 = (p for p in paths2 if p[0] in index)
 
+    return paths1, paths2
+
+
+def generate_genotypes(paths, zygosity_constraints, debug=False):
     # Any het constraint remove the need to consider homozygous genotypes
-    # FIXME: diploid assumptions
+    # FIXME: diploid assumption
+    if debug and not isinstance(paths, list):
+        paths = list(paths)
+
     if 1 in zygosity_constraints.values():
         pairs = combinations(paths, 2)
     else:
         pairs = combinations_with_replacement(paths, 2)
 
-    valid_pairs = [pair for pair in pairs if is_valid_geno(zygosity_constraints, pair)]
-    valid_genos = sorted(set(get_geno(p1, p2) for p1, p2 in valid_pairs))
+    genos = ((seq1, seq2) if seq1 <= seq2 else (seq2, seq1)
+             for (seq1, alts1), (seq2, alts2) in pairs
+             if is_valid_geno(zygosity_constraints, alts1, alts2))
+
+    genos = sorted(set(genos))
 
     if debug:
         print('PATHS:')
-        for i, path in enumerate(paths, 1):
+        for i, (seq, path) in enumerate(paths, 1):
             assert len(path) == len(set(path))
-            print('{:4d}: {}'.format(i, path))
+            print('{:4d}: {}'.format(i, seq))
         print()
 
         print('POSSIBLE HAPLOTYPES:')
-        for i, path in enumerate(paths, 1):
+        for i, (seq, path) in enumerate(paths, 1):
             assert len(path) == len(set(path))
-            print('{:4d}: {}'.format(i, get_path_seq(path)))
+            print('{:4d}: {}'.format(i, seq))
         print()
 
-        print('VALID GENOTYPES:')
+        print('GENOTYPES:')
 
-        for i, (allele1, allele2) in enumerate(valid_genos, 1):
+        for i, (allele1, allele2) in enumerate(genos, 1):
             print('{:4d}: {}/{}'.format(i, allele1, allele2))
         print()
 
-    return valid_genos
+    return genos
