@@ -23,19 +23,22 @@ from collections      import namedtuple, defaultdict, Counter
 from vgraph.norm      import NormalizedLocus
 
 
-RefAllele = namedtuple('RefAllele', 'start stop seq phase')
-AltAllele = namedtuple('AltAllele', 'start stop seq phase')
+class RefAllele(object):
+    __slots__ = ('seq', 'phase')
+    def __init__(self, seq, phase):
+        self.seq = seq
+        self.phase = phase
+    def __repr__(self):
+        return 'RefAllele({}, {})'.format(self.seq, self.phase)
 
 
-def is_valid_path(phase_constraints, path):
-    if phase_constraints:
-        pathset = set(p for p in path if isinstance(p, AltAllele))
-        for phaseset in phase_constraints.itervalues():
-            n = len(pathset & phaseset)
-            if n != 0 and n != len(phaseset):
-                raise ValueError('should not happen')
-                return False
-    return True
+class AltAllele(object):
+    __slots__ = ('seq', 'phase')
+    def __init__(self, seq, phase):
+        self.seq = seq
+        self.phase = phase
+    def __repr__(self):
+        return 'AltAllele({}, {})'.format(self.seq, self.phase)
 
 
 def is_valid_geno(zygosity_constraints, paths):
@@ -49,7 +52,6 @@ def get_path_seq(path):
 
 def generate_linear_graph(ref, start, stop, loci, name):
     zygosity_constraints = defaultdict(int)
-    phase_constraints = defaultdict(set)
     graph = []
     pos = start
 
@@ -60,55 +62,52 @@ def generate_linear_graph(ref, start, stop, loci, name):
         left = locus.left
 
         if pos < left.start:
-            graph.append([RefAllele(pos, left.start, ref[pos:left.start], None)])
+            graph.append([RefAllele(ref[pos:left.start], None)])
         elif pos > left.start:
             raise ValueError('unordered locus previous start={}, current start={}'.format(pos, left.start))
 
-        pos = left.start
-        alleles = []
-        for i in set(indices):
-            if i:
-                # Add phase constraint for hets only
-                phasename = None
-                if phased and len(indices) == 2 and indices[0] != indices[1]:
-                    phasename = 'M' if indices[0] == i else 'F'
-
-                allele = AltAllele(left.start, left.stop, left.alleles[i], phasename)
-                alleles.append(allele)
-
-                # Add zygosity constraint
-                zygosity_constraints[allele] = indices.count(i)
-
-                if phasename:
-                    phase_constraints[phasename].add(allele)
-
-            else:
-                alleles.append(RefAllele(left.start, left.stop, ref[left.start:left.stop], None))
-
-        graph.append(alleles)
+        alleles = _make_alleles(ref, left, indices, phased, zygosity_constraints)
+        graph.append(list(alleles))
         pos = left.stop
 
     if pos < stop:
-        graph.append([RefAllele(pos, stop, ref[pos:stop], None)])
+        graph.append([RefAllele(ref[pos:stop], None)])
 
-    return graph, zygosity_constraints, phase_constraints
+    return graph, zygosity_constraints
+
+
+def _make_alleles(ref, locus, indices, phased, zygosity_constraints):
+    index_set = set(indices)
+    het = len(index_set) > 1
+
+    for i in index_set:
+        # Alt allele at phased and heterozygous locus
+        if i and phased and het:
+            for phasename in (j for j, idx in enumerate(indices) if i == idx):
+                allele = AltAllele(locus.alleles[i], phasename)
+                zygosity_constraints[allele] = 1
+                yield allele
+
+        # Alt allele at unphased or homozygous locus
+        elif i:
+            allele = AltAllele(locus.alleles[i], None)
+            zygosity_constraints[allele] = indices.count(i)
+            yield allele
+
+        # Ref allele
+        else:
+            assert locus.alleles[0] == ref[locus.start:locus.stop]
+            yield RefAllele(ref[locus.start:locus.stop], None)
 
 
 def generate_paths(graph):
-    # queue of (seq, start, stop, alts, phasesets, antiphasesets)
+    # queue of (seq, path, phasesets, antiphasesets)
     paths = [('', [], set(), set())]
 
-    #print()
-    #print('  PATHS')
-    for i, alleles in enumerate(graph, 1):
+    for alleles in graph:
         paths = _extend_paths(paths, alleles)
-        #paths = list(paths)
-        #print('    {:d} Alleles: {}'.format(i, alleles))
-        #for j, (seq, path, ps, aps) in enumerate(paths, 1):
-        #    print('      {:d}.{:d}: seq={} ps={} aps={} alts={}'.format(i, j, seq, ps, aps, [a for a in path if a.phase]))
-        #print()
-    paths = (p[1] for p in paths)
-    return paths
+
+    return (p[1] for p in paths)
 
 
 def _extend_paths(inpaths, alleles):
@@ -121,8 +120,6 @@ def _extend_paths(inpaths, alleles):
         pruned_alleles = _apply_phase_constrants(alleles, phasesets, antiphasesets)
 
         for allele in pruned_alleles:
-            assert not path or path[-1].stop == allele.start
-            assert allele.phase not in antiphasesets
             new_phasesets = _update_phasesets(phasesets, allele.phase)
             new_antiphasesets = _update_antiphasesets(antiphasesets, add_phasesets, allele.phase)
             yield seq + allele.seq, path + [allele], new_phasesets, new_antiphasesets
@@ -159,7 +156,7 @@ def _update_antiphasesets(antiphasesets, add_phasesets, phaseset):
 
 
 def generate_genotypes(ref, start, stop, loci, name, debug=False):
-    graph, zygosity_constraints, phase_constraints = generate_linear_graph(ref, start, stop, loci, name)
+    graph, zygosity_constraints = generate_linear_graph(ref, start, stop, loci, name)
 
     if debug:
         print('-' * 80)
@@ -169,11 +166,8 @@ def generate_genotypes(ref, start, stop, loci, name, debug=False):
         print()
         print('ZYGOSITY CONSTRAINTS:', zygosity_constraints)
         print()
-        print('PHASE CONSTRAINTS:', phase_constraints)
-        print()
 
     paths = map(tuple, generate_paths(graph))
-    assert all(is_valid_path(phase_constraints, path) for path in paths)
 
     # Any het constraint remove the need to consider homozygous genotypes
     # FIXME: diploid assumptions
@@ -193,7 +187,7 @@ def generate_genotypes(ref, start, stop, loci, name, debug=False):
         print()
 
         print('POSSIBLE HAPLOTYPES:')
-        for i, path in enumerate(valid_paths, 1):
+        for i, path in enumerate(paths, 1):
             assert len(path) == len(set(path))
             print('{:4d}: {}'.format(i, get_path_seq(path)))
         print()
