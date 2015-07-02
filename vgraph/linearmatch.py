@@ -18,25 +18,29 @@
 from __future__       import division, print_function
 
 from itertools        import combinations, combinations_with_replacement
-from collections      import namedtuple, defaultdict, Counter
+from collections      import defaultdict, Counter
 
 from vgraph.norm      import NormalizedLocus
 
 
 class RefAllele(object):
     __slots__ = ('seq', 'phase')
+
     def __init__(self, seq, phase):
         self.seq = seq
         self.phase = phase
+
     def __repr__(self):
         return 'RefAllele({}, {})'.format(self.seq, self.phase)
 
 
 class AltAllele(object):
     __slots__ = ('seq', 'phase')
+
     def __init__(self, seq, phase):
         self.seq = seq
         self.phase = phase
+
     def __repr__(self):
         return 'AltAllele({}, {})'.format(self.seq, self.phase)
 
