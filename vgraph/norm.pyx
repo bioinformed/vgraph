@@ -246,7 +246,7 @@ class NormalizedLocus(object):
 
         if self.alleles[0] != ref[start:stop]:
             raise ReferenceMismatch('Reference mismatch at {}:{}-{}, found={}, expected={}'
-                      .format(record.contig, start, stop, self.alleles[0], ref[start:stop]))
+                      .format(record.contig, start + 1, stop, self.alleles[0], ref[start:stop]))
 
         if name is not None:
             sample = record.samples[name]
