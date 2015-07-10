@@ -70,14 +70,26 @@ def make_bedmap(bedfile):
     return bedmap
 
 
-def include_filter(records, include):
+def region_filter(records, include):
     for start, stop, (rec, inc) in union([records, include]):
         if inc:
             for record in rec:
                 yield record
 
 
-def variants_by_chromosome(refs, filenames, names, include=None):
+def filter_records(records, args):
+    if args.include_filter:
+        include = set(f.strip() for fs in args.include_filter for f in fs.split(','))
+        records = (record for record in records if not include.isdisjoint(record.filter))
+
+    if args.exclude_filter:
+        exclude = set(f.strip() for fs in args.exclude_filter for f in fs.split(','))
+        records = (record for record in records if exclude.isdisjoint(record.filter))
+
+    return records
+
+
+def variants_by_chromosome(refs, filenames, names, args):
     vars = [VariantFile(var) for var in filenames]
 
     for filename, var in zip(filenames, vars):
@@ -87,16 +99,17 @@ def variants_by_chromosome(refs, filenames, names, include=None):
     chroms = [set(informative_chromosomes(var)) for var in vars]
     chroms = set.union(*chroms)
 
-    if include is not None:
-        include = make_bedmap(BedFile(include))
+    if args.include_regions is not None:
+        include = make_bedmap(BedFile(args.include_regions))
         chroms &= set(include)
 
     for chrom in chroms:
         ref  = refs.fetch(chrom).upper()
-        loci = [records_to_loci(ref, var.fetch(chrom), name) for name, var in zip(names, vars)]
+        loci = [filter_records(var.fetch(chrom), args) for var in vars]
+        loci = [records_to_loci(ref, l, name) for name, l in zip(names, loci)]
         loci = [sort_almost_sorted(l, key=attrgetter('start', 'stop')) for l in loci]
-        if include is not None:
-            loci = [include_filter(l, include[chrom]) for l in loci]
+        if args.include_regions is not None:
+            loci = [region_filter(l, include[chrom]) for l in loci]
         yield chrom, ref, loci
 
 
@@ -192,8 +205,12 @@ def parse_args():
                         help='Name or index of sample in vcf2 (default=0).')
     parser.add_argument('-p', '--reference-padding', metavar='N', default=2,
                         help='Force loci within N bp into the same super locus (default=2).')
-    parser.add_argument('-i', '--include', help='BED file of high confidence regions to compare')
-    parser.add_argument('-o', '--out-vcf', default='-', help='Output VCF (- for stdout).')
+    parser.add_argument('-i', '--include-regions', help='BED file of high confidence regions to compare')
+    parser.add_argument('--include-filter', metavar='F', action='append',
+                        help='Include records with filter status F.  Option may be specified multiple times or F can be comma delimited')
+    parser.add_argument('--exclude-filter', metavar='F', action='append',
+                        help='Exclude records with filter status F.  Option may be specified multiple times or F can be comma delimited')
+    #parser.add_argument('-o', '--out-vcf', default='-', help='Output VCF (- for stdout).')
     parser.add_argument('--reference', metavar='FASTA', required=True, help='Reference FASTA+FAI')
     parser.add_argument('--debug', action='store_true', help='Output extremely verbose debugging information')
     parser.add_argument('--profile', action='store_true', help='Profile code performance')
@@ -206,7 +223,7 @@ def main(args):
     refs = Fastafile(expanduser(args.reference))
 
     # Create parallel locus iterator by chromosome
-    vars = variants_by_chromosome(refs, [args.vcf1, args.vcf2], [args.name1, args.name2], args.include)
+    vars = variants_by_chromosome(refs, [args.vcf1, args.vcf2], [args.name1, args.name2], args)
 
     # Proceed by chromosome
     for chrom, ref, loci in vars:
