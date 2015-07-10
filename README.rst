@@ -20,8 +20,8 @@ knowledge.  Please treat these versions as "alpha" quality that are suitable
 for evaluation by other tool developers and skilled technical users.  The
 first beta version will be ready shortly and will be more "end user"
 friendly and will have pretty output and nice aggregation and summary output
-statistics.  A production-ready release for the masses is planned by the
-upcoming GA4GH meeting in Leiden (6/9/2015 - 6/11/2015).
+statistics.  A production-ready release for the masses is planned in the
+near future.
 
 Input
 -----
