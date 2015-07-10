@@ -31,22 +31,28 @@ from pysam              import VariantFile, Fastafile
 
 from vgraph.bed         import BedFile
 from vgraph.norm        import NormalizedLocus
-from vgraph.intervals   import intersect
+from vgraph.intervals   import union
 from vgraph.iterstuff   import sort_almost_sorted, is_empty_iter
 from vgraph.linearmatch import generate_graph, generate_paths, generate_genotypes, intersect_paths
+from vgraph.linearmatch import generate_graph, extend_paths, RefAllele
 
 
 def valid_alleles(alleles):
     return not any('<' in a or '[' in a or ']' in a for a in alleles)
 
 
-def records_to_loci(ref, records):
+def is_alt_genotype(record, name):
+    sample = record.samples[name]
+    indices = sample.allele_indices
+    return bool(indices and -1 not in indices and indices.count(0) != len(indices))
+
+
+def records_to_loci(ref, records, name):
     # Prevents left shuffling the locus through the previous locus
     last_left_stop = 0
     for recnum, record in enumerate(records):
-        alts = record.alts
-        if alts and valid_alleles(alts):
-            locus = NormalizedLocus(recnum, record, ref, last_left_stop)
+        if valid_alleles(record.alleles) and is_alt_genotype(record, name):
+            locus = NormalizedLocus(recnum, record, ref, name, last_left_stop)
             last_left_stop = locus.left.stop
             yield locus
 
@@ -65,14 +71,14 @@ def make_bedmap(bedfile):
 
 
 def include_filter(records, include):
-    for start, stop, (rec, inc) in intersect([records, include]):
+    for start, stop, (rec, inc) in union([records, include]):
         if inc:
             for record in rec:
                 yield record
 
 
-def variants_by_chromosome(refs, filenames, include=None):
-    vars   = [VariantFile(var) for var in filenames]
+def variants_by_chromosome(refs, filenames, names, include=None):
+    vars = [VariantFile(var) for var in filenames]
 
     for filename, var in zip(filenames, vars):
         if not var.index:
@@ -87,7 +93,7 @@ def variants_by_chromosome(refs, filenames, include=None):
 
     for chrom in chroms:
         ref  = refs.fetch(chrom).upper()
-        loci = [records_to_loci(ref, var.fetch(chrom)) for var in vars]
+        loci = [records_to_loci(ref, var.fetch(chrom), name) for name, var in zip(names, vars)]
         loci = [sort_almost_sorted(l, key=attrgetter('start', 'stop')) for l in loci]
         if include is not None:
             loci = [include_filter(l, include[chrom]) for l in loci]
@@ -116,6 +122,66 @@ def get_superlocus_bounds(superloci):
     return start, stop
 
 
+def superlocus_equal_trivial(super1, super2):
+    if len(super1) != len(super2):
+        return False
+
+    for locus1, locus2 in zip(super1, super2):
+        left1, left2 = locus1.left, locus2.left
+
+        if left1.start != left2.start:
+            return False
+
+        if left1.stop != left2.stop:
+            return False
+
+        alleles1, alleles2 = left1.alleles, left2.alleles
+        g1 = tuple(alleles1[i] for i in locus1.allele_indices)
+        g2 = tuple(alleles2[i] for i in locus2.allele_indices)
+
+        if not locus1.phased or not locus2.phased:
+            g1, g2 = tuple(sorted(g1)), tuple(sorted(g2))
+
+        if g1 != g2:
+            return False
+
+    return True
+
+
+def superlocus_equal(ref, start, stop, super1, super2, debug=False):
+    #if superlocus_equal_trivial(super1, super2):
+    #   return 'TRIVIAL MATCH!'
+
+    if not super1 or not super2:
+        return 'MISMATCH!'
+
+    # Bounds come from left normalized extremes
+    start, stop = get_superlocus_bounds([super1, super2])
+
+    # Create genotype sets for each superlocus
+    try:
+        graph1, constraints1 = generate_graph(ref, start, stop, super1, debug)
+        graph2, constraints2 = generate_graph(ref, start, stop, super2, debug)
+
+        paths1 = generate_paths(graph1, args.debug)
+        paths2 = generate_paths(graph2, args.debug)
+
+        paths1, paths2 = intersect_paths(paths1, paths2)
+
+        genos1 = set(generate_genotypes(paths1, constraints1, debug))
+        genos2 = set(generate_genotypes(paths2, constraints2, debug))
+
+        # Test whether genotype sets intersect
+        if genos1.isdisjoint(genos2):
+            status = 'MISMATCH!'
+        else:
+            status = 'MATCH!'
+    except ValueError:
+        status = 'ERROR!'
+
+    return status
+
+
 def parse_args():
     parser = ArgumentParser()
     parser.add_argument('vcf1', help='VCF/BCF input 1 (- for stdin).')
@@ -137,15 +203,15 @@ def parse_args():
 
 def main(args):
     # Load FASTA reference
-    refs  = Fastafile(expanduser(args.reference))
+    refs = Fastafile(expanduser(args.reference))
 
     # Create parallel locus iterator by chromosome
-    vars  = variants_by_chromosome(refs, [args.vcf1, args.vcf2], args.include)
+    vars = variants_by_chromosome(refs, [args.vcf1, args.vcf2], [args.name1, args.name2], args.include)
 
     # Proceed by chromosome
     for chrom, ref, loci in vars:
         # Create superloci by intersecting locus streams
-        superloci = intersect(loci, min_distance=args.reference_padding)
+        superloci = union(loci, min_distance=args.reference_padding)
 
         # Proceed by superlocus
         for _, _, (super1, super2) in superloci:
@@ -156,27 +222,7 @@ def main(args):
             # Bounds come from left normalized extremes
             start, stop = get_superlocus_bounds([super1, super2])
 
-            # Create genotype sets for each superlocus
-            try:
-                graph1, constraints1 = generate_graph(ref, start, stop, super1, args.name1, args.debug)
-                graph2, constraints2 = generate_graph(ref, start, stop, super2, args.name2, args.debug)
-
-                paths1 = generate_paths(graph1, args.debug)
-                paths2 = generate_paths(graph2, args.debug)
-
-                paths1, paths2 = intersect_paths(paths1, paths2)
-
-                genos1 = set(generate_genotypes(paths1, constraints1, args.debug))
-                genos2 = set(generate_genotypes(paths2, constraints2, args.debug))
-
-                # Test whether genotype sets intersect
-                if genos1.isdisjoint(genos2):
-                    status = 'MISMATCH!'
-                else:
-                    status = 'MATCH!'
-            except ValueError:
-                status = 'ERROR!'
-                genos1 = genos2 = set()
+            status = superlocus_equal(ref, start, stop, super1, super2, debug=args.debug)
 
             # The hard work is done.  The rest is just output and formatting...
             print('{}:[{:d}-{:d}): {}'.format(chrom, start, stop, status))
@@ -194,12 +240,66 @@ def main(args):
                 for locus in superlocus:
                     lstart = locus.left.start
                     lstop = locus.left.stop
-                    sample = locus.record.samples[name]
-                    indices = sample.allele_indices
-                    sep = '|' if sample.phased else '/'
+                    indices = locus.allele_indices
+                    sep = '|' if locus.phased else '/'
                     geno = sep.join(locus.left.alleles[a] or '-' if a is not None else '.' for a in indices)
                     print('  NORM{:d}: [{:5d}-{:5d}) ref={} geno={}'.format(i, lstart, lstop, locus.left.alleles[0] or '-', geno))
             print()
+
+
+#            [start, stop1)                           [stop1, ..)
+#  Case 1:  |[-------------)[++++alt++++]            |[+++alt+++]
+#           |                                  ===>  |
+#           |[-----------------][++++alt++++]        |[---][+++alt+++]
+#            [start,    stop2)
+
+def graph_allele_iterator(ref, graph1, graph2):
+    DONE = None, len(ref), None
+
+    pos = next_stop1 = next_stop2 = 0
+    next_alleles1 = next_alleles2 = True
+    next_ref1 = next_ref2 = True
+
+    while next_alleles1 and next_alleles2:
+        next_pos = pos
+        while next_ref1 and next_ref2:
+            next_pos = min(next_stop1, next_stop2)
+
+            if pos == next_stop1:
+                next_start1, next_stop1, next_alleles1 = next(graph1, DONE)
+                next_ref1 = len(next_alleles1) == 1 and isinstance(next_alleles1[0], RefAllele)
+
+            if pos == next_stop2:
+                next_start2, next_stop2, next_alleles2 = next(graph2, DONE)
+                next_ref2 = len(next_alleles2) == 1 and isinstance(next_alleles2[0], RefAllele)
+
+        if pos != next_pos:
+            ref_alleles = [RefAllele(pos, next_pos, ref)]
+            yield ref_alleles, ref_alleles
+            pos = next_pos
+
+        # Handle cases:
+        #   alt+, ref
+        #   ref,  alt+
+
+
+def main_new(args):
+    # Load FASTA reference
+    refs = Fastafile(expanduser(args.reference))
+
+    # Create parallel locus iterator by chromosome
+    vars = variants_by_chromosome(refs, [args.vcf1, args.vcf2], [args.name1, args.name2], args.include)
+
+    # Proceed by chromosome
+    for chrom, ref, (loci1, loci2) in vars:
+        graph1, constraints1 = generate_graph(ref, 0, len(ref), loci1, args.debug)
+        graph2, constraints2 = generate_graph(ref, 0, len(ref), loci2, args.debug)
+
+        paths1, paths2 = [], []
+
+        # alleles are aligned on start, stop coordinates
+        for alleles1, alleles2 in graph_allele_iterator(ref, graph1, graph2):
+            pass
 
 
 if __name__ == '__main__':

@@ -21,79 +21,121 @@ from itertools   import combinations, combinations_with_replacement
 from collections import defaultdict
 
 
+EMPTY_PATH = ('', [], set(), set())
+
+
+TRIM_MIN, TRIM_MARGIN = 15, 5
+
+
+def trim_seq(seq):
+    if len(seq) >= TRIM_MIN:
+        return '{}...{}'.format(seq[:TRIM_MARGIN], seq[-TRIM_MARGIN:])
+    else:
+        return seq
+
+
+def trim_ref(ref, start, stop):
+    if stop - start >= TRIM_MIN:
+        return '{}...{}'.format(ref[start:start + TRIM_MARGIN], ref[stop - TRIM_MARGIN:stop])
+    else:
+        return ref[start:stop]
+
+
 class RefAllele(object):
-    __slots__ = ('seq',)
+    __slots__ = ('start', 'stop', 'ref')
     phase = None
 
-    def __init__(self, seq):
-        self.seq = seq
+    def __init__(self, start, stop, ref):
+        self.start = start
+        self.stop = stop
+        self.ref = ref
+
+    @property
+    def seq(self):
+        return self.ref[self.start:self.stop]
+
+    def __len__(self):
+        return self.stop - self.start
 
     def __repr__(self):
-        return 'RefAllele({})'.format(self.seq or '-')
+        seq = trim_ref(self.ref, self.start, self.stop) or '-'
+        return 'RefAllele({}, {}, {})'.format(self.start, self.stop, seq)
 
 
-class AltAllele(object):
-    __slots__ = ('seq', 'phase')
+class HomAltAllele(object):
+    __slots__ = ('start', 'stop', 'seq')
+    phase = None
 
-    def __init__(self, seq, phase):
+    def __init__(self, start, stop, seq):
+        self.start = start
+        self.stop = stop
+        self.seq = seq
+
+    def __len__(self):
+        return self.stop - self.start
+
+    def __repr__(self):
+        seq = trim_seq(self.seq) or '-'
+        return 'HomAltAllele({}, {}, {})'.format(self.start, self.stop, seq)
+
+
+class HetAltAllele(object):
+    __slots__ = ('start', 'stop', 'seq', 'phase')
+
+    def __init__(self, start, stop, seq, phase=None):
+        self.start = start
+        self.stop = stop
         self.seq = seq
         self.phase = phase
 
+    def __len__(self):
+        return len(self.seq)
+
     def __repr__(self):
+        seq = trim_seq(self.seq) or '-'
         if self.phase is None:
-            return 'AltAllele({})'.format(self.seq or '-')
+            return 'HetAltAllele({}, {}, {})'.format(self.start, self.stop, seq)
         else:
-            return 'AltAllele({}, phase={})'.format(self.seq or '-', self.phase)
+            return 'HetAltAllele({}, {}, {}, phase={})'.format(self.start, self.stop, seq, self.phase)
 
 
 def is_valid_geno(zygosity_constraints, alts1, alts2):
+    if not zygosity_constraints:
+        return True
     observed_zygosity = defaultdict(int)
     for allele in alts1:
-        if isinstance(allele, AltAllele):
-            observed_zygosity[allele] += 1
+        observed_zygosity[allele] += 1
     for allele in alts2:
-        if isinstance(allele, AltAllele):
-            observed_zygosity[allele] += 1
+        observed_zygosity[allele] += 1
     return zygosity_constraints == observed_zygosity
 
 
-def generate_graph(ref, start, stop, loci, name, debug=False):
+def generate_graph(ref, start, stop, loci, debug=False):
     zygosity_constraints = defaultdict(int)
-    graph = []
-    pos = start
 
-    for locus in loci:
-        sample = locus.record.samples[name]
-        indices = sample.allele_indices
-        phased = sample.phased
-        left = locus.left
-        assert ref[left.start:left.stop] == left.alleles[0]
+    def _generate_graph():
+        pos = start
 
-        if pos < left.start:
-            graph.append([RefAllele(ref[pos:left.start])])
-        elif pos > left.start:
-            raise ValueError('unordered locus previous start={}, current start={}'.format(pos, left.start))
+        for locus in loci:
+            left = locus.left
 
-        alleles = _make_alleles(left.alleles, indices, phased, zygosity_constraints)
-        graph.append(list(alleles))
-        pos = left.stop
+            if pos is not None:
+                if pos < left.start:
+                    yield pos, left.start, [RefAllele(pos, left.start, ref)]
+                elif pos > left.start:
+                    raise ValueError('unordered locus previous start={}, current start={}'.format(pos, left.start))
 
-    if pos < stop:
-        graph.append([RefAllele(ref[pos:stop])])
+            alleles = _make_alleles(ref, left.start, left.stop, left.alleles, locus.allele_indices, locus.phased, zygosity_constraints)
+            yield left.start, left.stop, list(alleles)
+            pos = left.stop
 
-    if debug:
-        print('-' * 80)
-        print('linear VG [{:d}, {:d})'.format(start, stop))
-        for i, alleles in enumerate(graph, 1):
-            print('  {}: {}'.format(i, alleles))
-        print()
-        print('ZYGOSITY CONSTRAINTS:', zygosity_constraints)
-        print()
+        if stop is not None and pos < stop:
+            yield pos, stop, [RefAllele(pos, stop, ref)]
 
-    return graph, zygosity_constraints
+    return _generate_graph(), zygosity_constraints
 
 
-def _make_alleles(alleles, indices, phased, zygosity_constraints):
+def _make_alleles(ref, start, stop, alleles, indices, phased, zygosity_constraints):
     index_set = set(indices)
     het = len(index_set) > 1
 
@@ -102,35 +144,50 @@ def _make_alleles(alleles, indices, phased, zygosity_constraints):
         if i and phased and het:
             # each alt allele is distinct
             for phasename in (j for j, idx in enumerate(indices) if i == idx):
-                allele = AltAllele(alleles[i], phasename)
+                allele = HetAltAllele(start, stop, alleles[i], phasename)
                 zygosity_constraints[allele] = 1
                 yield allele
 
         # Alt allele at unphased or homozygous locus
         elif i:
             # single alt allele
-            allele = AltAllele(alleles[i], None)
-            zygosity_constraints[allele] = indices.count(i)
+            if het:
+                allele = HetAltAllele(start, stop, alleles[i])
+                zygosity_constraints[allele] = indices.count(i)
+            else:
+                allele = HomAltAllele(start, stop, alleles[i])
             yield allele
 
         # Ref allele
         else:
-            yield RefAllele(alleles[0])
+            yield RefAllele(start, stop, ref)
 
 
 def generate_paths(graph, debug=False):
-    # Initial path of (seq, alts, phasesets, antiphasesets)
-    paths = [('', [], set(), set())]
+    #if debug:
+    #    print('-' * 80)
+    #    print('linear VG [{:d}, {:d})'.format(start, stop))
+    #    for i, alleles in enumerate(graph, 1):
+    #        print('  {}: {}'.format(i, alleles))
+    #    print()
+    #    print('ZYGOSITY CONSTRAINTS:', zygosity_constraints)
+    #    print()
 
-    for alleles in graph:
-        paths = _extend_paths(paths, alleles)
+    # Initial path of (seq, alts, phasesets, antiphasesets)
+    paths = [EMPTY_PATH]
+
+    for start, stop, alleles in graph:
+        paths = extend_paths(paths, alleles)
 
     paths = list(tuple(p[:2]) for p in paths)
 
     return paths
 
 
-def _extend_paths(inpaths, alleles):
+def extend_paths(inpaths, alleles):
+    if not inpaths:
+        inpaths = [EMPTY_PATH]
+
     for seq, alts, phasesets, antiphasesets in inpaths:
         # Set of new phase sets being added from this allele
         # nb: must occur prior to pruning
@@ -142,7 +199,7 @@ def _extend_paths(inpaths, alleles):
         for allele in pruned_alleles:
             new_phasesets = _update_phasesets(phasesets, allele.phase)
             new_antiphasesets = _update_antiphasesets(antiphasesets, add_phasesets, allele.phase)
-            new_alts = alts + [allele] if isinstance(allele, AltAllele) else alts
+            new_alts = alts + [allele] if isinstance(allele, HetAltAllele) else alts
             yield seq + allele.seq, new_alts, new_phasesets, new_antiphasesets
 
 

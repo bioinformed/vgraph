@@ -75,7 +75,7 @@ def demultiplex_records(n, records):
     return demux
 
 
-def intersect(record_list, min_distance=0, interval_func=attrgetter('start', 'stop')):
+def union(record_list, min_distance=0, interval_func=attrgetter('start', 'stop')):
     n = len(record_list)
     start = stop = 0
     records = []

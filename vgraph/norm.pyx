@@ -163,7 +163,7 @@ cdef normalize_alleles_left(bytes ref, int start, int stop, alleles, int bound, 
     if start < bound:
         alleles = shuffle_right(ref, &start, &stop, alleles, stop + bound - start, ref_step)
 
-    assert bound <= start,'start={:d}, left bound={:d} alleles={}'.format(start, bound, alleles)
+    #assert bound <= start,'start={:d}, left bound={:d} alleles={}'.format(start, bound, alleles)
 
     # STEP 4: While a null allele exists, left shuffle by prepending alleles
     #         with reference and trimming common suffixes
@@ -200,7 +200,7 @@ cdef normalize_alleles_right(bytes ref, int start, int stop, alleles, int bound,
     if stop > bound:
         alleles = shuffle_left(ref, &start, &stop, alleles, start - stop - bound, ref_step)
 
-    assert bound >= stop,'stop={:d}, right bound={:d}'.format(stop, bound)
+    #assert bound >= stop,'stop={:d}, right bound={:d}'.format(stop, bound)
 
     # STEP 4: While a null allele exists, right shuffle by appending alleles
     #         with reference and trimming common prefixes
@@ -227,23 +227,34 @@ def suffixes(s):
 
 
 class NormalizedLocus(object):
-    '''Normalization data for a single VCF record'''
-    __slots__ = ('recnum', 'record', 'start', 'stop', 'left', 'right')
+    '''Normalization data for a single VCF record and genotype'''
+    __slots__ = ('recnum', 'record', 'start', 'stop', 'left', 'right', 'alleles', 'allele_indices', 'phased')
 
-    def __init__(self, recnum, record, ref, left_bound=0):
+    def __init__(self, recnum, record, ref, name=None, left_bound=0):
         self.recnum = recnum
         self.record = record
+        self.alleles = record.alleles
 
-        record_alleles = record.alleles
-        start, stop, alleles = normalize_alleles(ref, record.start, record.stop, record_alleles, left=True, shuffle=False)
+        if name is not None:
+            sample = record.samples[name]
+            self.allele_indices = sample.allele_indices
+            self.phased = sample.phased
+
+            geno_alleles = (self.alleles[0],) + tuple(a for i, a in enumerate(self.alleles[1:], 1) if i in self.allele_indices)
+            self.allele_indices = tuple(geno_alleles.index(self.alleles[i]) for i in self.allele_indices)
+            self.alleles = geno_alleles
+        else:
+            self.allele_indices = self.phased = None
+
+        start, stop, alleles = normalize_alleles(ref, record.start, record.stop, self.alleles, left=True, shuffle=False)
         refa, alts = alleles[0], alleles[1:]
 
         # Left shuffle locus with all alt alleles considered simultaneously and left bound of previous locus
         # n.b. use original record alleles to enforce bound
-        self.left = normalize_alleles(ref, record.start, record.stop, record_alleles, bound=left_bound, left=True)
+        self.left = normalize_alleles(ref, record.start, record.stop, self.alleles, bound=left_bound, left=True)
 
         # Right shuffle locus with all alt alleles considered simultaneously
-        self.right = normalize_alleles(ref, record.start, record.stop, record_alleles, left=False)
+        self.right = normalize_alleles(ref, record.start, record.stop, self.alleles, left=False)
 
         # Minimum start and stop coordinates over each alt allele
         # n.b. may be broader than with all alleles or with bounds
