@@ -28,6 +28,14 @@ from collections import namedtuple
 from itertools   import chain
 
 
+class NormalizationError(ValueError):
+    pass
+
+
+class ReferenceMismatch(NormalizationError):
+    pass
+
+
 normalized_alleles = namedtuple('shuffled_alleles', 'start stop alleles')
 
 
@@ -141,7 +149,7 @@ cdef normalize_alleles_left(bytes ref, int start, int stop, alleles, int bound, 
     cdef int trimmed
 
     if alleles[0] != ref[start:stop]:
-        raise ValueError('Reference alleles does not match reference sequence: {} != {}'.format(alleles[0], ref[start:stop]))
+        raise ReferenceMismatch('Reference alleles does not match reference sequence: {} != {}'.format(alleles[0], ref[start:stop]))
 
     if len(alleles) < 2 or start <= 0 or start <= 0:
         return normalized_alleles(start, stop, alleles)
@@ -178,7 +186,7 @@ cdef normalize_alleles_right(bytes ref, int start, int stop, alleles, int bound,
     cdef int trimmed, chrom_stop = len(ref)
 
     if alleles[0] != ref[start:stop]:
-        raise ValueError('Reference alleles does not match reference sequence: {} != {}'.format(alleles[0], ref[start:stop]))
+        raise ReferenceMismatch('Reference alleles does not match reference sequence: {} != {}'.format(alleles[0], ref[start:stop]))
 
     if len(alleles) < 2 or stop >= chrom_stop:
         return normalized_alleles(start, stop, alleles)
@@ -234,6 +242,11 @@ class NormalizedLocus(object):
         self.recnum = recnum
         self.record = record
         self.alleles = record.alleles
+        start, stop = record.start, record.stop
+
+        if self.alleles[0] != ref[start:stop]:
+            raise ReferenceMismatch('Reference mismatch at {}:{}-{}, found={}, expected={}'
+                      .format(record.contig, start, stop, self.alleles[0], ref[start:stop]))
 
         if name is not None:
             sample = record.samples[name]
@@ -246,7 +259,7 @@ class NormalizedLocus(object):
         else:
             self.allele_indices = self.phased = None
 
-        start, stop, alleles = normalize_alleles(ref, record.start, record.stop, self.alleles, left=True, shuffle=False)
+        start, stop, alleles = normalize_alleles(ref, start, stop, self.alleles, left=True, shuffle=False)
         refa, alts = alleles[0], alleles[1:]
 
         # Left shuffle locus with all alt alleles considered simultaneously and left bound of previous locus
