@@ -169,7 +169,7 @@ def superlocus_equal(ref, start, stop, super1, super2, debug=False):
        return '=', 'T'
 
     if not super1 or not super2:
-        return '=', 'T'
+        return 'X', 'T'
 
     # Bounds come from left normalized extremes
     start, stop = get_superlocus_bounds([super1, super2])
