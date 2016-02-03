@@ -80,9 +80,9 @@ cpdef trim_common_prefixes(strs, int min_len=0, int max_trim=0):
 
 
 cdef shuffle_left(bytes ref, int *start, int *stop, alleles, int bound, int ref_step):
-    cdef int trimmed, step, left
+    cdef int trimmed, step, left, n = len(alleles)
 
-    while '' in alleles and start[0] > bound:
+    while 0 < alleles.count('') < n and start[0] > bound:
         step = min(ref_step, start[0] - bound)
 
         r = ref[start[0] - step:start[0]].upper()
@@ -107,11 +107,10 @@ cdef shuffle_left(bytes ref, int *start, int *stop, alleles, int bound, int ref_
 
 
 cdef shuffle_right(bytes ref, int *start, int *stop, alleles, int bound, int ref_step):
-    cdef int trimmed, step, left
+    cdef int trimmed, step, left, n = len(alleles)
 
-    while '' in alleles and stop[0] < bound:
+    while 0 < alleles.count('') < n and stop[0] < bound:
         step = min(ref_step, bound - stop[0])
-
         r = ref[stop[0]:stop[0]+step].upper()
         new_alleles = [ a+r for a in alleles ]
 
@@ -272,12 +271,12 @@ class NormalizedLocus(object):
         # Minimum start and stop coordinates over each alt allele
         # n.b. may be broader than with all alleles or with bounds
         lefts = [[start, self.left.start],
-                 (normalize_alleles(ref, start, stop,           (refa, alt),    left=True).start for alt in alts),
+                 (normalize_alleles(ref, start, stop,           (refa, alt),    left=True).start for alt in alts if refa),
                  (normalize_alleles(ref, start, start + len(r), (r,    ''),     left=True).start for r in prefixes(refa) if r),
                  (normalize_alleles(ref, start, start,          ('',   prealt), left=True).start for alt in alts for prealt in prefixes(alt) if prealt)]
 
         rights = [[stop, self.right.stop],
-                  (normalize_alleles(ref, start,         stop, (refa, alt),    left=False).stop for alt in alts),
+                  (normalize_alleles(ref, start,         stop, (refa, alt),    left=False).stop for alt in alts if refa),
                   (normalize_alleles(ref, stop - len(r), stop, (r,    ''),     left=False).stop for r in suffixes(refa) if r),
                   (normalize_alleles(ref, stop,          stop, ('',   sufalt), left=False).stop for alt in alts for sufalt in suffixes(alt) if sufalt)]
 
@@ -289,3 +288,6 @@ class NormalizedLocus(object):
 
     def left_order_key(self):
         return self.left.start, self.recnum
+
+    def record_order_key(self):
+        return self.recnum
