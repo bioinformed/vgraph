@@ -113,6 +113,11 @@ def is_valid_geno(zygosity_constraints, alts1, alts2):
 def generate_graph(ref, start, stop, loci, debug=False):
     zygosity_constraints = defaultdict(int)
 
+    last = start
+    for locus in loci:
+        assert(locus.left.start >= last)
+        last = locus.left.start
+
     def _generate_graph():
         pos = start
 
@@ -123,7 +128,7 @@ def generate_graph(ref, start, stop, loci, debug=False):
                 if pos < left.start:
                     yield pos, left.start, [RefAllele(pos, left.start, ref)]
                 elif pos > left.start:
-                    raise ValueError('unordered locus previous start={}, current start={}'.format(pos, left.start))
+                    raise ValueError('overlapping locus: previous stop={}, current start={}'.format(pos, left.start))
 
             alleles = _make_alleles(ref, left.start, left.stop, left.alleles, locus.allele_indices, locus.phased, zygosity_constraints)
             yield left.start, left.stop, list(alleles)
@@ -176,11 +181,22 @@ def generate_paths(graph, debug=False):
     # Initial path of (seq, alts, phasesets, antiphasesets)
     paths = [EMPTY_PATH]
 
-    for start, stop, alleles in graph:
+    for i,(start, stop, alleles) in enumerate(graph):
+        if debug:
+            print('GRAPH: step={}, start={}, stop={}, alleles={}'.format(i+1, start, stop, alleles))
         paths = extend_paths(paths, alleles)
+        if debug:
+            paths = list(paths)
+            for j,p in enumerate(paths):
+                print('     PATH{}: {}'.format(j+1, p))
+            print()
 
     paths = list(tuple(p[:2]) for p in paths)
-
+    if debug:
+        print('FINAL PATHS:')
+        for j,p in enumerate(paths):
+            print('     PATH{}: {}'.format(j+1, p))
+        print()
     return paths
 
 

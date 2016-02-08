@@ -19,7 +19,6 @@ from __future__ import division, print_function
 
 
 from collections        import defaultdict
-from operator           import attrgetter
 
 from vgraph.bed         import BedFile
 from vgraph.norm        import NormalizedLocus

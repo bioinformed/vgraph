@@ -15,7 +15,6 @@
 ## License for the specific language governing permissions and limitations
 ## under the License.
 
-
 from __future__ import division, print_function
 
 
@@ -24,92 +23,12 @@ import traceback
 
 from os.path            import expanduser
 from argparse           import ArgumentParser
-from collections        import defaultdict
-from operator           import attrgetter
 
 from pysam              import VariantFile, Fastafile
 
-from vgraph.bed         import BedFile
 from vgraph.norm        import NormalizedLocus
 from vgraph.intervals   import union
-from vgraph.iterstuff   import sort_almost_sorted, is_empty_iter
-from vgraph.linearmatch import generate_graph, generate_paths, generate_genotypes, intersect_paths
-from vgraph.linearmatch import generate_graph, extend_paths, RefAllele
-
-
-def valid_alleles(alleles):
-    return not any('<' in a or '[' in a or ']' in a for a in alleles)
-
-
-def is_alt_genotype(record, name):
-    sample = record.samples[name]
-    indices = sample.allele_indices
-    return bool(indices and -1 not in indices and indices.count(0) != len(indices))
-
-
-def records_to_loci(ref, records, name):
-    # Prevents left shuffling the locus through the previous locus
-    last_left_stop = 0
-    for recnum, record in enumerate(records):
-        if valid_alleles(record.alleles) and is_alt_genotype(record, name):
-            locus = NormalizedLocus(recnum, record, ref, name, last_left_stop)
-            last_left_stop = locus.left.stop
-            yield locus
-
-
-def informative_chromosomes(vars):
-    if not vars.index:
-        raise ValueError('Variant file requires index')
-    return (chrom for chrom in vars.index if not is_empty_iter(vars.fetch(chrom)))
-
-
-def make_bedmap(bedfile):
-    bedmap = defaultdict(list)
-    for record in bedfile:
-        bedmap[record.contig].append(record)
-    return bedmap
-
-
-def region_filter(records, include):
-    for start, stop, (rec, inc) in union([records, include]):
-        if inc:
-            for record in rec:
-                yield record
-
-
-def filter_records(records, args):
-    if args.include_filter:
-        include = set(f.strip() for fs in args.include_filter for f in fs.split(','))
-        records = (record for record in records if not include.isdisjoint(record.filter))
-
-    if args.exclude_filter:
-        exclude = set(f.strip() for fs in args.exclude_filter for f in fs.split(','))
-        records = (record for record in records if exclude.isdisjoint(record.filter))
-
-    return records
-
-
-def variants_by_chromosome(refs, vars, names, args):
-
-    for var in vars:
-        if not var.index:
-            raise ValueError('Input variant file `{}` is missing an index'.format(var.filename))
-
-    chroms = [set(informative_chromosomes(var)) for var in vars]
-    chroms = set.union(*chroms)
-
-    if args.include_regions is not None:
-        include = make_bedmap(BedFile(args.include_regions))
-        chroms &= set(include)
-
-    for chrom in chroms:
-        ref  = refs.fetch(chrom).upper()
-        loci = [filter_records(var.fetch(chrom), args) for var in vars]
-        loci = [records_to_loci(ref, l, name) for name, l in zip(names, loci)]
-        loci = [sort_almost_sorted(l, key=attrgetter('start', 'stop')) for l in loci]
-        if args.include_regions is not None:
-            loci = [region_filter(l, include[chrom]) for l in loci]
-        yield chrom, ref, loci
+from vgraph.match       import variants_by_chromosome, get_superlocus_bounds, superlocus_equal
 
 
 def tryint(s):
@@ -128,76 +47,6 @@ def tryint(s):
         return s
 
 
-def get_superlocus_bounds(superloci):
-    start = min(super[ 0].left.start for super in superloci if super)
-    stop  = max(super[-1].left.stop  for super in superloci if super)
-    return start, stop
-
-
-def locus_equal_trivial(locus1, locus2):
-    left1, left2 = locus1.left, locus2.left
-
-    if left1.start != left2.start:
-        return False
-
-    if left1.stop != left2.stop:
-        return False
-
-    alleles1, alleles2 = left1.alleles, left2.alleles
-    g1 = tuple(alleles1[i] for i in locus1.allele_indices)
-    g2 = tuple(alleles2[i] for i in locus2.allele_indices)
-
-    if not locus1.phased or not locus2.phased:
-        g1, g2 = tuple(sorted(g1)), tuple(sorted(g2))
-
-    return g1 == g2
-
-
-def superlocus_equal_trivial(super1, super2):
-    if len(super1) != len(super2):
-        return False
-
-    for locus1, locus2 in zip(super1, super2):
-        if not locus_equal_trivial(locus1, locus2):
-            return False
-
-    return True
-
-
-def superlocus_equal(ref, start, stop, super1, super2, debug=False):
-    if superlocus_equal_trivial(super1, super2):
-       return '=', 'T'
-
-    if not super1 or not super2:
-        return 'X', 'T'
-
-    # Bounds come from left normalized extremes
-    start, stop = get_superlocus_bounds([super1, super2])
-
-    # Create genotype sets for each superlocus
-    try:
-        graph1, constraints1 = generate_graph(ref, start, stop, super1, debug)
-        graph2, constraints2 = generate_graph(ref, start, stop, super2, debug)
-
-        paths1 = generate_paths(graph1, args.debug)
-        paths2 = generate_paths(graph2, args.debug)
-
-        paths1, paths2 = intersect_paths(paths1, paths2)
-
-        genos1 = set(generate_genotypes(paths1, constraints1, debug))
-        genos2 = set(generate_genotypes(paths2, constraints2, debug))
-
-        # Test whether genotype sets intersect
-        if genos1.isdisjoint(genos2):
-            status = 'X', 'H'
-        else:
-            status = '=', 'H'
-    except ValueError:
-        status = 'N', 'N'
-
-    return status
-
-
 def parse_args():
     parser = ArgumentParser()
     parser.add_argument('vcf1', help='VCF/BCF input 1 (- for stdin)')
@@ -208,13 +57,20 @@ def parse_args():
                         help='Name or index of sample in vcf1 (default=0)')
     parser.add_argument('--name2', metavar='N', default=0, type=tryint,
                         help='Name or index of sample in vcf2 (default=0)')
-    parser.add_argument('-p', '--reference-padding', metavar='N', default=2,
-                        help='Force loci within N bp into the same super locus (default=2)')
-    parser.add_argument('-i', '--include-regions', metavar='BED', help='BED file of high confidence regions to compare')
+    parser.add_argument('-p', '--reference-padding', metavar='N', default=3,
+                        help='Force loci within N bp into the same super locus (default=3)')
+    parser.add_argument('--include-regions', metavar='BED', help='BED file of regions to include in comparison')
+    parser.add_argument('--exclude-regions', metavar='BED', help='BED file of regions to exclude from comparison')
+    parser.add_argument('--include-file-regions', metavar='BED', action='append',
+                        help='BED file of regions to include for each input file')
+    parser.add_argument('--exclude-file-regions', metavar='BED', action='append',
+                        help='BED file of regions to exclude from comparison for each input file')
     parser.add_argument('--include-filter', metavar='F', action='append',
                         help='Include records with filter status F.  Option may be specified multiple times or F can be comma delimited')
     parser.add_argument('--exclude-filter', metavar='F', action='append',
                         help='Exclude records with filter status F.  Option may be specified multiple times or F can be comma delimited')
+    parser.add_argument('--min-gq', metavar='N', type=int,
+                        help='Exclude records with genotype quality (GQ) < N')
     #parser.add_argument('-o', '--out-vcf', default='-', help='Output VCF (- for stdout)')
     parser.add_argument('--reference', metavar='FASTA', required=True, help='Reference FASTA+FAI')
     parser.add_argument('--debug', action='store_true', help='Output extremely verbose debugging information')
@@ -235,41 +91,43 @@ def main(args):
     if args.out1:
         in_vars[0].header.formats.add('BD', '1', 'String', 'Match decision for call (match: =, mismatch: X, error: N)')
         in_vars[0].header.formats.add('BK', '1', 'String', 'Sub-type for match decision (trivial: T, haplotype: H, error: N)')
-        out_vars[0] = VariantFile(args.out1, b'w', header=in_vars[0].header)
+        out_vars[0] = VariantFile(args.out1, 'w', header=in_vars[0].header)
 
     if args.out2:
         in_vars[1].header.formats.add('BD', '1', 'String', 'Match decision for call (match: =, mismatch: X, error: N)')
         in_vars[1].header.formats.add('BK', '1', 'String', 'Sub-type for match decision (trivial: T, haplotype: H, error: N)')
-        out_vars[1] = VariantFile(args.out2, b'w', header=in_vars[1].header)
+        out_vars[1] = VariantFile(args.out2, 'w', header=in_vars[1].header)
+
+    match_status_map = {True : '=', False : 'X', None : '.'}
 
     # Create parallel locus iterator by chromosome
     for chrom, ref, loci in variants_by_chromosome(refs, in_vars, [args.name1, args.name2], args):
-        # Create superloci by intersecting locus streams
+        # Create superloci by taking the union of overlapping loci across all of the locus streams
         superloci = union(loci, min_distance=args.reference_padding)
 
         # Proceed by superlocus
         for _, _, (super1, super2) in superloci:
-            # Resort each superlocus back into original VCF order
-            super1 = sorted(super1, key=NormalizedLocus.left_order_key)
-            super2 = sorted(super2, key=NormalizedLocus.left_order_key)
+            super1.sort(key=NormalizedLocus.left_order_key)
+            super2.sort(key=NormalizedLocus.left_order_key)
 
             # Bounds come from left normalized extremes
             start, stop = get_superlocus_bounds([super1, super2])
 
             match, match_type = superlocus_equal(ref, start, stop, super1, super2, debug=args.debug)
+            match_status = match_status_map[match]
 
             # The hard work is done.  The rest is just output and formatting...
-            print('{}:[{:d}-{:d}): {}{}'.format(chrom, start, stop, match, match_type))
+            print('{}:[{:d}-{:d}): {}{}'.format(chrom, start, stop, match_status, match_type))
 
             if out_vars[0]:
                 for locus in sorted(super1, key=NormalizedLocus.record_order_key):
-                    locus.record.samples[args.name1]['BD'] = match
+                    locus.record.samples[args.name1]['BD'] = match_status
                     locus.record.samples[args.name1]['BK'] = match_type
                     out_vars[0].write(locus.record)
 
             if out_vars[1]:
                 for locus in sorted(super2, key=NormalizedLocus.record_order_key):
-                    locus.record.samples[args.name2]['BD'] = match
+                    locus.record.samples[args.name2]['BD'] = match_status
                     locus.record.samples[args.name2]['BK'] = match_type
                     out_vars[1].write(locus.record)
 
@@ -295,61 +153,6 @@ def main(args):
     for out_var in out_vars:
         if out_var is not None:
             out_var.close()
-    del out_vars
-
-#            [start, stop1)                           [stop1, ..)
-#  Case 1:  |[-------------)[++++alt++++]            |[+++alt+++]
-#           |                                  ===>  |
-#           |[-----------------][++++alt++++]        |[---][+++alt+++]
-#            [start,    stop2)
-
-def graph_allele_iterator(ref, graph1, graph2):
-    DONE = None, len(ref), None
-
-    pos = next_stop1 = next_stop2 = 0
-    next_alleles1 = next_alleles2 = True
-    next_ref1 = next_ref2 = True
-
-    while next_alleles1 and next_alleles2:
-        next_pos = pos
-        while next_ref1 and next_ref2:
-            next_pos = min(next_stop1, next_stop2)
-
-            if pos == next_stop1:
-                next_start1, next_stop1, next_alleles1 = next(graph1, DONE)
-                next_ref1 = len(next_alleles1) == 1 and isinstance(next_alleles1[0], RefAllele)
-
-            if pos == next_stop2:
-                next_start2, next_stop2, next_alleles2 = next(graph2, DONE)
-                next_ref2 = len(next_alleles2) == 1 and isinstance(next_alleles2[0], RefAllele)
-
-        if pos != next_pos:
-            ref_alleles = [RefAllele(pos, next_pos, ref)]
-            yield ref_alleles, ref_alleles
-            pos = next_pos
-
-        # Handle cases:
-        #   alt+, ref
-        #   ref,  alt+
-
-
-def main_new(args):
-    # Load FASTA reference
-    refs = Fastafile(expanduser(args.reference))
-
-    # Create parallel locus iterator by chromosome
-    vars = variants_by_chromosome(refs, [args.vcf1, args.vcf2], [args.name1, args.name2], args.include)
-
-    # Proceed by chromosome
-    for chrom, ref, (loci1, loci2) in vars:
-        graph1, constraints1 = generate_graph(ref, 0, len(ref), loci1, args.debug)
-        graph2, constraints2 = generate_graph(ref, 0, len(ref), loci2, args.debug)
-
-        paths1, paths2 = [], []
-
-        # alleles are aligned on start, stop coordinates
-        for alleles1, alleles2 in graph_allele_iterator(ref, graph1, graph2):
-            pass
 
 
 if __name__ == '__main__':
@@ -359,7 +162,7 @@ if __name__ == '__main__':
         yappi.start()
         main(args)
         yappi.stop()
-        stats = yappi.get_func_stats().strip_dirs()
+        stats = yappi.get_func_stats().sort('tsub').strip_dirs()
         stats.print_all(out=sys.stderr, columns={0: ('name', 45), 1: ('ncall', 10), 2: ('tsub', 8), 3: ('ttot', 8), 4: ('tavg', 8)})
     else:
         main(args)
