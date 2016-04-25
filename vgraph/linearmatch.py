@@ -168,7 +168,7 @@ def _make_alleles(ref, start, stop, alleles, indices, phased, zygosity_constrain
             yield RefAllele(start, stop, ref)
 
 
-def generate_paths(graph, debug=False):
+def generate_paths(graph, feasible_paths=None, debug=False):
     #if debug:
     #    print('-' * 80)
     #    print('linear VG [{:d}, {:d})'.format(start, stop))
@@ -184,7 +184,12 @@ def generate_paths(graph, debug=False):
     for i,(start, stop, alleles) in enumerate(graph):
         if debug:
             print('GRAPH: step={}, start={}, stop={}, alleles={}'.format(i+1, start, stop, alleles))
+
         paths = extend_paths(paths, alleles)
+
+        if feasible_paths is not None:
+            paths = prune_paths(paths, feasible_paths)
+
         if debug:
             paths = list(paths)
             for j,p in enumerate(paths):
@@ -192,11 +197,13 @@ def generate_paths(graph, debug=False):
             print()
 
     paths = list(tuple(p[:2]) for p in paths)
+
     if debug:
         print('FINAL PATHS:')
         for j,p in enumerate(paths):
             print('     PATH{}: {}'.format(j+1, p))
         print()
+
     return paths
 
 
@@ -247,6 +254,15 @@ def _update_antiphasesets(antiphasesets, add_phasesets, phaseset):
         if add_anti:
             antiphasesets = antiphasesets | add_anti
     return antiphasesets
+
+
+def prune_paths(paths, feasible_paths):
+    for path in paths:
+        p = path[0]
+        for f in feasible_paths:
+            if f[0].startswith(p):
+                yield path
+                break
 
 
 def intersect_paths(paths1, paths2):

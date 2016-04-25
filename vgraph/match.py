@@ -98,7 +98,7 @@ def filter_records(records, name, args):
     return records
 
 
-def variants_by_chromosome(refs, vars, names, args):
+def variants_by_chromosome(refs, vars, names, args, get_all=False):
     for var in vars:
         if not var.index:
             raise ValueError('Input variant file `{}` is missing an index'.format(var.filename))
@@ -123,7 +123,12 @@ def variants_by_chromosome(refs, vars, names, args):
 
     for chrom in chroms:
         ref  = refs.fetch(chrom).upper()
-        loci = [filter_records(var.fetch(chrom), name, args) for var,name in zip(vars, names)]
+        loci = [var.fetch(chrom) for var in vars]
+
+        if get_all:
+            all_loci = loci = [list(l) for l in loci]
+
+        loci = [filter_records(l, name, args) for l,name in zip(loci, names)]
 
         if args.include_file_regions:
             loci = [region_filter_include(l, inc[chrom]) for l,inc in zip(loci, include_files)]
@@ -138,7 +143,10 @@ def variants_by_chromosome(refs, vars, names, args):
         if args.exclude_regions is not None:
             loci = [region_filter_exclude(l, exclude[chrom]) for l in loci]
 
-        yield chrom, ref, loci
+        if get_all:
+            yield chrom, ref, loci, all_loci
+        else:
+            yield chrom, ref, loci
 
 
 def get_superlocus_bounds(superloci):
@@ -181,9 +189,6 @@ def superlocus_equal(ref, start, stop, super1, super2, debug=False):
     if superlocus_equal_trivial(super1, super2):
        return True, 'T'
 
-    if not super1 or not super2:
-        return False, 'T'
-
     # Bounds come from left normalized extremes
     start, stop = get_superlocus_bounds([super1, super2])
 
@@ -192,8 +197,8 @@ def superlocus_equal(ref, start, stop, super1, super2, debug=False):
         graph1, constraints1 = generate_graph(ref, start, stop, super1, debug)
         graph2, constraints2 = generate_graph(ref, start, stop, super2, debug)
 
-        paths1 = generate_paths(graph1, debug)
-        paths2 = generate_paths(graph2, debug)
+        paths1 = generate_paths(graph1, debug=debug)
+        paths2 = generate_paths(graph2, feasible_paths=paths1, debug=debug)
 
         paths1, paths2 = intersect_paths(paths1, paths2)
 
