@@ -113,11 +113,27 @@ def main(args):
             # Bounds come from left normalized extremes
             start, stop = get_superlocus_bounds([super1, super2])
 
+            print('-'*80)
+            print('{}:[{:d}-{:d}):'.format(chrom, start, stop))
+            print()
+
+            for i, (name, superlocus) in enumerate([(args.name1, super1), (args.name2, super2)], 1):
+                for locus in superlocus:
+                    lstart = locus.left.start
+                    lstop = locus.left.stop
+                    indices = locus.allele_indices
+                    sep = '|' if locus.phased else '/'
+                    geno = sep.join(locus.left.alleles[a] or '-' if a is not None else '.' for a in indices)
+                    print('  NORM{:d}: [{:5d}-{:5d}) ref={} geno={}'.format(i, lstart, lstop, locus.left.alleles[0] or '-', geno))
+            print()
+
             match, match_type = superlocus_equal(ref, start, stop, super1, super2, debug=args.debug)
             match_status = match_status_map[match]
 
+            print('    MATCH={} TYPE={}'.format(match_status, match_type))
+            print()
+
             # The hard work is done.  The rest is just output and formatting...
-            print('{}:[{:d}-{:d}): {}{}'.format(chrom, start, stop, match_status, match_type))
 
             if out_vars[0]:
                 for locus in sorted(super1, key=NormalizedLocus.record_order_key):
@@ -139,16 +155,6 @@ def main(args):
             if match == 'N':
                 traceback.print_exc(file=sys.stdout)
                 print()
-
-            for i, (name, superlocus) in enumerate([(args.name1, super1), (args.name2, super2)], 1):
-                for locus in superlocus:
-                    lstart = locus.left.start
-                    lstop = locus.left.stop
-                    indices = locus.allele_indices
-                    sep = '|' if locus.phased else '/'
-                    geno = sep.join(locus.left.alleles[a] or '-' if a is not None else '.' for a in indices)
-                    print('  NORM{:d}: [{:5d}-{:5d}) ref={} geno={}'.format(i, lstart, lstop, locus.left.alleles[0] or '-', geno))
-            print()
 
     for out_var in out_vars:
         if out_var is not None:
