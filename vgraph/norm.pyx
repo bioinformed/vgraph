@@ -150,7 +150,7 @@ cdef normalize_alleles_left(bytes ref, int start, int stop, alleles, int bound, 
     if alleles[0] != ref[start:stop]:
         raise ReferenceMismatch('Reference alleles does not match reference sequence: {} != {}'.format(alleles[0], ref[start:stop]))
 
-    if len(alleles) < 2 or start <= 0 or start <= 0:
+    if len(alleles) < 2 or start <= 0 or bound <= 0:
         return normalized_alleles(start, stop, alleles)
 
     # STEP 0: Trim prefixes if needed to clear bound
