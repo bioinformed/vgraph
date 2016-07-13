@@ -8,7 +8,7 @@ genetic variants using variant graphs.  Conventional methods used to compare
 variants apply heuristic normalization rules and then compare variants
 individually by matching based on genomic position and allele information. 
 In contrast, ``vgraph`` utilizes a graph representation of genomic variants
-in to precisely compare complex variants that are refractory to comparison
+to precisely compare complex variants that are refractory to comparison
 using conventional methods.
 
 **NOTICE:** ``vgraph`` is under heavy development and is not yet ready for
