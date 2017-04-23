@@ -15,12 +15,11 @@
 ## under the License.
 
 
-try:
-    from itertools import izip as zip
-except ImportError:
-    pass
+from collections import defaultdict
+from operator    import attrgetter
+from itertools   import groupby
 
-from .smartfile import smartfile
+from .smartfile  import smartfile
 
 
 class BedRecord(object):
@@ -111,3 +110,21 @@ class BedFile(object):
                 continue
 
             yield BedRecord.from_line(line)
+
+
+def load_bedmap(filename):
+    '''Load BED file as a dictionary mapping contig to list of BedRecords
+
+    Args:
+        filename (str): input filename
+
+    Returns:
+        dict: dictionary mapping contig to list of BedRecords
+    '''
+    bed = sorted(BedFile(filename), key=attrgetter('contig', 'start', 'stop'))
+
+    bedmap = defaultdict(list)
+    for contig, contig_records in groupby(bed, attrgetter('contig')):
+        bedmap[contig] = list(contig_records)
+
+    return dict(bedmap)

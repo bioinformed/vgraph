@@ -47,7 +47,7 @@ def merge(iterables):
     h_append = h.append
     for i, it in enumerate(map(iter, iterables)):
         try:
-            next = it.next if hasattr(it, 'next') else it.__next__
+            next = it.__next__
             h_append([next(), i, next])
         except _StopIteration:
             pass
@@ -69,7 +69,7 @@ def merge(iterables):
 
 
 def demultiplex_records(n, records):
-    demux = [[] for _ in xrange(n)]
+    demux = [[] for _ in range(n)]
     for i, r in records:
         demux[i].append(r)
     return demux
@@ -83,7 +83,7 @@ def union(record_list, min_distance=0, interval_func=attrgetter('start', 'stop')
     >>> l1 = [(0,1),(1,2),(2,3),(3,4),(4,5)]
     >>> l2 = [(1,2),(3,4)]
     >>> for start, stop, vals in union([l1,l2], 0, ifunc):
-    ...     print start, stop, vals
+    ...     print(start, stop, vals)
     0 1 [[(0, 1)], []]
     1 2 [[(1, 2)], [(1, 2)]]
     2 3 [[(2, 3)], []]
@@ -91,26 +91,26 @@ def union(record_list, min_distance=0, interval_func=attrgetter('start', 'stop')
     4 5 [[(4, 5)], []]
 
     >>> for start, stop, vals in union([l1,l2], 1, ifunc):
-    ...     print start, stop, vals
+    ...     print(start, stop, vals)
     0 5 [[(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)], [(1, 2), (3, 4)]]
 
     >>> l1 = [(0,5),(10,15),(20,25)]
     >>> l2 = [(5,11),(21,21)]
     >>> for start, stop, vals in union([l1,l2], 0, ifunc):
-    ...     print start, stop, vals
+    ...     print(start, stop, vals)
     0 5 [[(0, 5)], []]
     5 15 [[(10, 15)], [(5, 11)]]
     20 25 [[(20, 25)], [(21, 21)]]
 
     >>> l1 = [(0,5),(10,15),(20,25)]
     >>> for start, stop, vals in union([l1, []], 0, ifunc):
-    ...     print start, stop, vals
+    ...     print(start, stop, vals)
     0 5 [[(0, 5)], []]
     10 15 [[(10, 15)], []]
     20 25 [[(20, 25)], []]
 
     >>> for start, stop, vals in union([[], l1], 0, ifunc):
-    ...     print start, stop, vals
+    ...     print(start, stop, vals)
     0 5 [[], [(0, 5)]]
     10 15 [[], [(10, 15)]]
     20 25 [[], [(20, 25)]]
@@ -134,8 +134,3 @@ def union(record_list, min_distance=0, interval_func=attrgetter('start', 'stop')
 
     if records:
         yield start, stop, demultiplex_records(n, records)
-
-
-if __name__ == '__main__':
-    import doctest
-    doctest.testmod()

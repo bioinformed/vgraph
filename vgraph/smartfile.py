@@ -1,262 +1,130 @@
 # -*- coding: utf-8 -*-
 
-## Copyright 2015 Kevin B Jacobs
-##
-## Licensed under the Apache License, Version 2.0 (the "License"); you may
-## not use this file except in compliance with the License.  You may obtain
-## a copy of the License at
-##
-##        http://www.apache.org/licenses/LICENSE-2.0
-##
-## Unless required by applicable law or agreed to in writing, software
-## distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-## WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
-## License for the specific language governing permissions and limitations
-## under the License.
 
+"""Smarter file opener that understands compression"""
 
+import io
 import os
-import sys
-import argparse
+from subprocess import Popen, PIPE
+from pathlib import Path
 
-
-__all__ = ['smartfile', 'namefile', 'hyphen', 'SmartfileArg']
-
-
-COMPRESSED_SUFFIXES = {'gz': 'gzip', 'Z': 'gzip',
-                       'bz': 'bzip2', 'bz2': 'bzip2',
-                       }
-
-
-def is_str(s):
-    '''
-    is_str(s) -> bool
-
-    Return whether s is some flavor of string
-
-    :param s: an object
-    :rtype:   bool
-
-    >>> is_str(True)
-    False
-    >>> is_str(None)
-    False
-    >>> is_str('abc')
-    True
-    >>> is_str(u'abc')
-    True
-    '''
-    return isinstance(s, basestring)
-
-
-def spawn_compressor(exe, filename, mode, bufsize=-1):
-    '''
-    spawn_compressor(exe, filename, mode, bufsize=-1) -> input/output file object
-
+def spawn_compressor(exe, filename, mode, buffering=-1, encoding=None, errors=None, newline=None):
+    """
     Spawn a subprocess to run a (de)compressor like gzip or bzip2.
 
-    :param       exe: executable file name (must be fully qualified or found on the current PATH)
-    :type        exe: str
-    :param  filename: file name or file object
-    :type   filename: str or file object
-    :param      mode: determine whether the file objects should be opened for input or output,
+    Args:
+        exe (str): executable file name (must be fully qualified or found on the current PATH)
+        filename (str or file object): file name or file object
+        mode (str): determine whether the file objects should be opened for input or output,
                       either 'w' or 'r'
-    :type       mode: str
-    :param   bufsize: buffering mode and size.  0=unbuffered, 1=linebuffered, >1 buffer size,
+        buffering (int): buffering mode and size.  0=unbuffered, 1=linebuffered, >1 buffer size,
                       -1 default buffering (default)
-    :type    bufsize: int
-    :return         : file object to read from or write to
-    :rtype          : file object
-    '''
-    if os.environ.get('LOCUS_NOSPAWN'):
-        raise OSError('Spawning external processes disabled by LOCUS_NOSPAWN')
+        encoding: encoding method.  Default='utf-8'
+        errors: how encoding and decoding errors should be handled.  Default=None (See:https://docs.python.org/3/library/functions.html#open)
 
-    from subprocess import Popen, PIPE
+    Returns:
+        file object to read from or write to
 
+    Examples:
+        spawn_compressor(exe, filename, mode, buffering=-1) -> input/output file object
+    """
     if 'w' in mode:
-        out = file(filename, mode)
+        out = open(filename, mode)
         cmd = [exe, '-c']
-        f = Popen(cmd, stdin=PIPE, stdout=out, bufsize=bufsize).stdin
+        f = Popen(cmd, stdin=PIPE, stdout=out, bufsize=buffering).stdin
     else:
         cmd = [exe, '-d', '-c', filename]
-        f = Popen(cmd, stdout=PIPE, universal_newlines='U' in mode, bufsize=bufsize).stdout
+        f = Popen(cmd, stdout=PIPE, universal_newlines='U' in mode, bufsize=buffering).stdout
+
+    if 'b' not in mode and 'U' not in mode:
+        f = io.TextIOWrapper(f, encoding, errors, newline)
 
     return f
 
 
-def hyphen(filename, defaultfile):
-    '''
-    hyphen(filename,defaultfile)
-
-    Allow special handling when '-' is specified as a filename.  Returns a
-    default file object if input filename is '-', otherwise the specified file
-    name object is returned.
-
-    :param  defaultfile: default file name or file object
-    :type   defaultfile: str or file object
-    :param     filename: file name or file object
-    :type      filename: str or file object
-    :return            : file name or file object to read from or write to
-    :rtype             : str or file object
-    '''
-    if not is_str(filename):
-        return filename
-
-    if filename == '-':
-        return defaultfile
-
-    return filename
-
-
-def namefile(filething):
-    '''
-    namefile(filething) -> str
-
-    Return a human-comprehensible name for the file or file object provided.
-    Recognizes file objects with the 'name' attribute, including sys.stdin,
-    sys.stdout, and sys.stderr.
-
-    :param  filething: file or filename
-    :type   filething: file object or string
-    :return:           human-comprehensible file name
-
-    >>> namefile(file('/dev/null'))
-    '/dev/null'
-    >>> namefile(sys.stdin)
-    '<stdin>'
-    >>> namefile(sys.stderr)
-    '<stderr>'
-    >>> namefile('/dev/null')
-    '/dev/null'
-    '''
-    if is_str(filething):
-        return filething
-    elif getattr(filething, 'name', None) is not None:
-        return filething.name
-    else:
-        return repr(filething)
-
-
-_smartfile_errors = (ImportError, ValueError, OSError)
+COMPRESSED_SUFFIXES = {'gz': 'gzip', 'Z': 'gzip', 'bgz': 'gzip',
+                       'bz': 'bzip2', 'bz2': 'bzip2'}
 
 
 def compressed_filename(filename):
-    '''
+    """
     Determine if the input file is in or needs to be in compressed format
 
-    :param  filename: file name or file object
-    :type   filename: str or file object
-    :return         : compression format, if compressed, otherwise an empty string
-    :rtype          : str
+    Args:
+        filename (str or file object): file name or file object
 
-    >>> compressed_filename('subjects.sdat')
-    ''
-    >>> compressed_filename('subjects.sdat.gz')
-    'gzip'
-    >>> compressed_filename('../subjects.sdat')
-    ''
-    >>> compressed_filename('../subjects.sdat.gz')
-    'gzip'
-    >>> compressed_filename('../subjects.sdat.bz2')
-    'bzip2'
-    '''
-    if not is_str(filename):
+    Returns:
+        compression format, if compressed, otherwise an empty string
+
+    Examples:
+        >>> compressed_filename('subjects.sdat')
+        ''
+        >>> compressed_filename('subjects.sdat.gz')
+        'gzip'
+        >>> compressed_filename('../subjects.sdat')
+        ''
+        >>> compressed_filename('../subjects.sdat.gz')
+        'gzip'
+        >>> compressed_filename('../subjects.sdat.bz2')
+        'bzip2'
+    """
+    if not isinstance(filename, str):
         return ''
 
-    filename = os.path.expanduser(filename)
-    parts = os.path.basename(filename).split('.')
+    filename = Path(filename).name
+    parts = filename.split('.')
     ext = parts[-1] if parts else ''
     return COMPRESSED_SUFFIXES.get(ext, '')
 
 
-def smartfile(filename, mode='r', bufsize=-1):
-    '''
+
+def smartfile(filename, mode='r', buffering=-1, encoding=None, errors=None, newline=None):
+    """
     Return a file object in the correct compressed format as specified, which
     is ready to read from or write to
 
-    :param  filename: file name or file object
-    :type   filename: str or file object
-    :param      mode: determine whether the file objects should be opened for reading or writing,
-                      either 'w' or 'r'
-    :type       mode: str
-    :return         : file object to read from or write to
-    :rtype          : file object
-    '''
+    Args:
+        filename (str or file object): file name or file object
+        mode (str): determine whether the file objects should be opened for reading or writing,
+                      either 'w' or 'r'.  Default='r'
+        buffering (int): buffering mode and size.  0=unbuffered, 1=linebuffered, >1 buffer size,
+                      -1 default buffering (default)
+
+    Returns:
+        file object to read from or write to
+
+    """
     # Pass non-string filename objects back as file-objects (e.g. sys.stdin or sys.stdout)
-    if not is_str(filename):
+    if not isinstance(filename, str):
         return filename
 
     filename = os.path.expanduser(filename)
 
-    if not os.path.exists(filename):
+    if 'r' in mode and not Path(filename).exists():
         raise IOError('file does not exist')
 
     comp = compressed_filename(filename)
 
     if not comp:
-        f = file(filename, mode)
+        f = open(filename, mode, buffering, encoding, errors, newline)
     elif comp == 'gzip':
         try:
-            f = spawn_compressor(os.environ.get('LOCUS_GZIP', 'gzip'), filename, mode, bufsize=bufsize)
-        except _smartfile_errors:
+            f = spawn_compressor('gzip', filename, mode, buffering, encoding, errors, newline)
+        except (ImportError, ValueError, OSError):
             import gzip
-            f = gzip.GzipFile(filename, mode)
+            f = gzip.GzipFile(filename, mode, encoding, errors, newline)
     elif comp == 'bzip2':
         try:
-            f = spawn_compressor(os.environ.get('LOCUS_BZIP2', 'bzip2'), filename, mode, bufsize=bufsize)
-        except _smartfile_errors:
+            f = spawn_compressor('bzip2', filename, mode, buffering, encoding, errors, newline)
+        except (ImportError, ValueError, OSError):
             import bz2
-            f = bz2.BZ2File(filename, mode, buffering=max(0, bufsize))
+            f = bz2.BZ2File(filename, mode, encoding, errors, newline)
     else:
         raise ValueError('Unknown compression scheme: %s' % comp)
 
     return f
 
 
-class SmartfileArg(object):
-    '''Factory for creating file object types
-
-    Instances of SmartfileArg are typically passed as type= arguments to the
-    ArgumentParser add_argument() method.
-
-    Keyword Arguments:
-        - mode -- A string indicating how the file is to be opened. Accepts the
-            same values as the builtin open() function.
-        - bufsize -- The file's desired buffer size. Accepts the same values as
-            the builtin open() function.
-    '''
-    def __init__(self, mode='r', bufsize=-1):
-        self._mode = mode
-        self._bufsize = bufsize
-
-    def __call__(self, value):
-        # the special argument "-" means sys.std{in,out}
-        if value == '-':
-            if 'r' in self._mode:
-                return sys.stdin
-            elif 'w' in self._mode or 'a' in self._mode:
-                return sys.stdout
-            else:
-                msg = 'argument "-" with mode %r' % self._mode
-                raise ValueError(msg)
-
-        # all other arguments are used as file names
-        try:
-            return smartfile(value, self._mode, self._bufsize)
-        except IOError as e:
-            message = "can't open '%s': %s"
-            raise argparse.ArgumentTypeError(message % (value, e))
-
-    def __repr__(self):
-        args = self._mode, self._bufsize
-        args_str = ', '.join(repr(arg) for arg in args if arg != -1)
-        return '%s(%s)' % (type(self).__name__, args_str)
-
-
-def _test():
+if __name__ == '__main__':  # pragma: no cover
     import doctest
-    return doctest.testmod()
-
-
-if __name__ == '__main__':
-    _test()
+    doctest.testmod()

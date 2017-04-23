@@ -19,9 +19,9 @@ from setuptools import setup, find_packages
 from Cython.Distutils import build_ext
 from distutils.extension import Extension
 
-install_requires = ['Cython>=0.22', 'nose', 'pysam>=0.8.3']
-setup_requires   = ['setuptools_scm', 'pysam>=0.8.3']
-tests_require    = ['coverage']
+install_requires = ['Cython>=0.22', 'pysam>=0.8.3']
+setup_requires   = ['setuptools_scm', 'pytest-runner', 'pysam>=0.8.3']
+tests_require    = ['pytest', 'coverage']
 
 
 ext_modules = [Extension('vgraph.norm', ['vgraph/norm.pyx'])]
@@ -35,7 +35,7 @@ Operating System :: OS Independent
 Operating System :: POSIX
 Operating System :: POSIX :: Linux
 Operating System :: Unix
-Programming Language :: Python
+Programming Language :: Python :: 3.5
 Topic :: Scientific/Engineering
 Topic :: Scientific/Engineering :: Bioinformatics
 """
@@ -52,7 +52,7 @@ if __name__ == '__main__':
         author_email = 'jacobs@bioinformed.com',
         maintainer_email = 'jacobs@bioinformed.com',
         license = 'APACHE-2.0',
-        classifiers = classifiers,
+        classifiers = classifiers.split('\n'),
         zip_safe = False,
         test_suite = 'nose.collector',
         tests_require = tests_require,
@@ -61,5 +61,5 @@ if __name__ == '__main__':
         setup_requires = setup_requires,
         cmdclass = {'build_ext': build_ext},
         ext_modules = ext_modules,
-        scripts=['bin/vgraph'],
+        entry_points={'console_scripts': ['vgraph = vgraph.vgraph:main']},
     )

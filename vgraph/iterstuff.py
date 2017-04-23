@@ -15,19 +15,12 @@
 ## under the License.
 
 
-import sys
 import random
 import collections
 
 from operator import itemgetter, mul
 from itertools import chain, combinations, count, cycle, groupby, islice, repeat, starmap, tee
-
-PY3 = sys.version_info[0] == 3
-
-if PY3:
-    from itertools import filterfalse, zip_longest
-else:
-    from itertools import ifilterfalse as filterfalse, izip as zip, izip_longest as zip_longest, imap as map
+from itertools import filterfalse, zip_longest
 
 
 # Python itertools recipes
@@ -114,23 +107,15 @@ def grouper(iterable, n, fillvalue=None):
     return zip_longest(fillvalue=fillvalue, *args)
 
 
-if PY3:
-    def getnext(it):
-        return it.__next__
-else:
-    def getnext(it):
-        return it.next
-
-
 def roundrobin(*iterables):
     "roundrobin('ABC', 'D', 'EF') --> A D E B F C"
     # Recipe credited to George Sakkis
     pending = len(iterables)
-    nexts = cycle(getnext(iter(it)) for it in iterables)
+    nexts = cycle(iter(it).__next__ for it in iterables)
     while pending:
         try:
-            for next in nexts:
-                yield next()
+            for item in nexts:
+                yield item()
         except StopIteration:
             pending -= 1
             nexts = cycle(islice(nexts, pending))
@@ -224,7 +209,7 @@ def random_combination(iterable, r):
     "Random selection from itertools.combinations(iterable, r)"
     pool = tuple(iterable)
     n = len(pool)
-    indices = sorted(random.sample(xrange(n), r))
+    indices = sorted(random.sample(range(n), r))
     return tuple(pool[i] for i in indices)
 
 
@@ -232,7 +217,7 @@ def random_combination_with_replacement(iterable, r):
     "Random selection from itertools.combinations_with_replacement(iterable, r)"
     pool = tuple(iterable)
     n = len(pool)
-    indices = sorted(random.randrange(n) for i in xrange(r))
+    indices = sorted(random.randrange(n) for i in range(r))
     return tuple(pool[i] for i in indices)
 
 
@@ -376,17 +361,17 @@ def zip_exact(*iterables):
     >>> list(zip_exact("", range(3)))
     Traceback (most recent call last):
          ...
-    LengthMismatch
+    vgraph.iterstuff.LengthMismatch
 
     >>> list(zip_exact(range(3), ()))
     Traceback (most recent call last):
          ...
-    LengthMismatch
+    vgraph.iterstuff.LengthMismatch
 
     >>> list(zip_exact(range(3), range(2), range(4)))
     Traceback (most recent call last):
          ...
-    LengthMismatch
+    vgraph.iterstuff.LengthMismatch
 
     >>> items = zip_exact(iter(range(3)), range(2), range(4))
     >>> next(items)
@@ -396,7 +381,7 @@ def zip_exact(*iterables):
     >>> next(items)
     Traceback (most recent call last):
          ...
-    LengthMismatch
+    vgraph.iterstuff.LengthMismatch
     """
     if not iterables:
         return iter(iterables)
@@ -446,7 +431,7 @@ def sort_almost_sorted(iterable, key=None, windowsize=1000, stable=True):
         >>> list(sort_almost_sorted([1,2,5,6,4],windowsize=1))
         Traceback (most recent call last):
              ...
-        OrderError: Misordered keys beyond window size
+        vgraph.iterstuff.OrderError: Misordered keys beyond window size
 
         >>> list(sort_almost_sorted([2,3,4,5,6,7,9,10,1],windowsize=10))
         [1, 2, 3, 4, 5, 6, 7, 9, 10]
@@ -454,7 +439,7 @@ def sort_almost_sorted(iterable, key=None, windowsize=1000, stable=True):
         >>> list(sort_almost_sorted([2,3,4,5,6,7,9,10,1],windowsize=8))
         Traceback (most recent call last):
         ...
-        OrderError: Misordered keys beyond window size
+        vgraph.iterstuff.OrderError: Misordered keys beyond window size
 
     Test stability:
 
@@ -543,7 +528,7 @@ def ensure_ordered(iterable, key=None):
     >>> list(ensure_ordered([3, 2, 1]))
     Traceback (most recent call last):
          ...
-    OrderError: Invalid sort order
+    vgraph.iterstuff.OrderError: Invalid sort order
 
     >>> list(ensure_ordered([1.7, 1.5, 1.6, 1.4], key=lambda x: int(x)))
     [1.7, 1.5, 1.6, 1.4]
@@ -613,12 +598,3 @@ def ensure_unique_everseen(iterable, key=None):
                 raise ValueError('non-unique element detected')
             seen_add(k)
             yield element
-
-
-def _test():
-    import doctest
-    doctest.testmod()
-
-
-if __name__ == '__main__':
-    _test()

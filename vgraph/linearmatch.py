@@ -15,8 +15,6 @@
 ## under the License.
 
 
-from __future__  import division, print_function
-
 from itertools   import combinations, combinations_with_replacement
 from collections import defaultdict
 
@@ -25,6 +23,10 @@ EMPTY_PATH = ('', [], set(), set())
 
 
 TRIM_MIN, TRIM_MARGIN = 15, 5
+
+
+class OverlapError(ValueError):
+    pass
 
 
 def trim_seq(seq):
@@ -115,24 +117,22 @@ def generate_graph(ref, start, stop, loci, debug=False):
 
     last = start
     for locus in loci:
-        assert(locus.left.start >= last)
-        last = locus.left.start
+        assert(locus.start >= last)
+        last = locus.start
 
     def _generate_graph():
         pos = start
 
         for locus in loci:
-            left = locus.left
-
             if pos is not None:
-                if pos < left.start:
-                    yield pos, left.start, [RefAllele(pos, left.start, ref)]
-                elif pos > left.start:
-                    raise ValueError('overlapping locus: previous stop={}, current start={}'.format(pos, left.start))
+                if pos < locus.start:
+                    yield pos, locus.start, [RefAllele(pos, locus.start, ref)]
+                elif pos > locus.start:
+                    raise OverlapError('overlapping locus: previous stop={}, current start={}'.format(pos, locus.start))
 
-            alleles = _make_alleles(ref, left.start, left.stop, left.alleles, locus.allele_indices, locus.phased, zygosity_constraints)
-            yield left.start, left.stop, list(alleles)
-            pos = left.stop
+            alleles = _make_alleles(ref, locus.start, locus.stop, locus.alleles, locus.allele_indices, locus.phased, zygosity_constraints)
+            yield locus.start, locus.stop, list(alleles)
+            pos = locus.stop
 
         if stop is not None and pos < stop:
             yield pos, stop, [RefAllele(pos, stop, ref)]

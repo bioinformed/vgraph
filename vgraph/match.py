@@ -15,16 +15,13 @@
 ## License for the specific language governing permissions and limitations
 ## under the License.
 
-from __future__ import division, print_function
 
-
-from collections        import defaultdict
-
-from vgraph.bed         import BedFile
+from vgraph.bed         import load_bedmap
 from vgraph.norm        import NormalizedLocus
 from vgraph.intervals   import union
 from vgraph.iterstuff   import sort_almost_sorted, is_empty_iter
-from vgraph.linearmatch import generate_graph, generate_paths, generate_genotypes, intersect_paths
+from vgraph.linearmatch import generate_graph, generate_paths, generate_genotypes, intersect_paths, \
+                               OverlapError
 
 
 def valid_alleles(alleles):
@@ -34,16 +31,13 @@ def valid_alleles(alleles):
 def is_alt_genotype(record, name):
     sample = record.samples[name]
     indices = sample.allele_indices
-    return bool(indices and -1 not in indices and indices.count(0) != len(indices))
+    return not (not indices or None in indices or indices.count(0) == len(indices) or max(indices) >= len(record.alleles))
 
 
 def records_to_loci(ref, records, name):
-    # Prevents left shuffling the locus through the previous locus
-    last_left_stop = 0
     for recnum, record in enumerate(records):
         if valid_alleles(record.alleles) and is_alt_genotype(record, name):
-            locus = NormalizedLocus(recnum, record, ref, name, last_left_stop)
-            last_left_stop = locus.left.stop
+            locus = NormalizedLocus(recnum, record, ref, name)
             yield locus
 
 
@@ -53,25 +47,16 @@ def informative_chromosomes(vars):
     return (chrom for chrom in vars.index if not is_empty_iter(vars.fetch(chrom)))
 
 
-def make_bedmap(bedfile):
-    bedmap = defaultdict(list)
-    for record in bedfile:
-        bedmap[record.contig].append(record)
-    return bedmap
-
-
 def region_filter_include(records, include):
     for start, stop, (rec, inc) in union([records, include]):
         if inc:
-            for record in rec:
-                yield record
+            yield from rec
 
 
 def region_filter_exclude(records, exclude):
     for start, stop, (rec, exc) in union([records, exclude]):
         if not exc:
-            for record in rec:
-                yield record
+            yield from rec
 
 
 def filter_gq(records, name, min_gq):
@@ -107,36 +92,36 @@ def variants_by_chromosome(refs, vars, names, args, get_all=False):
     chroms = set.union(*chroms)
 
     if args.include_regions is not None:
-        include = make_bedmap(BedFile(args.include_regions))
+        include = load_bedmap(args.include_regions)
         chroms &= set(include)
 
     if args.exclude_regions is not None:
-        exclude = make_bedmap(BedFile(args.exclude_regions))
+        exclude = load_bedmap(args.exclude_regions)
 
     if args.include_file_regions:
         assert len(args.include_file_regions) == len(vars)
-        include_files = [make_bedmap(BedFile(fn)) for fn in args.include_file_regions]
+        include_files = [load_bedmap(fn) for fn in args.include_file_regions]
 
     if args.exclude_file_regions:
         assert len(args.exclude_file_regions) == len(vars)
-        exclude_files = [make_bedmap(BedFile(fn)) for fn in args.exclude_file_regions]
+        exclude_files = [load_bedmap(fn) for fn in args.exclude_file_regions]
 
     for chrom in chroms:
         ref  = refs.fetch(chrom).upper()
-        loci = [var.fetch(chrom) for var in vars]
+        records = [var.fetch(chrom) for var in vars]
 
         if get_all:
-            all_loci = loci = [list(l) for l in loci]
+            all_records = records = [list(l) for l in records]
 
-        loci = [filter_records(l, name, args) for l,name in zip(loci, names)]
+        records = [filter_records(r, name, args) for r, name in zip(records, names)]
 
         if args.include_file_regions:
-            loci = [region_filter_include(l, inc[chrom]) for l,inc in zip(loci, include_files)]
+            records = [region_filter_include(r, inc[chrom]) for r, inc in zip(records, include_files)]
         if args.exclude_file_regions:
-            loci = [region_filter_exclude(l, exl[chrom]) for l,exl in zip(loci, exclude_files)]
+            records = [region_filter_exclude(r, exl[chrom]) for r, exl in zip(records, exclude_files)]
 
-        loci = [records_to_loci(ref, l, name) for name, l in zip(names, loci)]
-        loci = [sort_almost_sorted(l, key=NormalizedLocus.extreme_order_key) for l in loci]
+        loci = [records_to_loci(ref, r, name) for name, r in zip(names, records)]
+        loci = [sort_almost_sorted(l, key=NormalizedLocus.natural_order_key) for l in loci]
 
         if args.include_regions is not None:
             loci = [region_filter_include(l, include[chrom]) for l in loci]
@@ -144,14 +129,14 @@ def variants_by_chromosome(refs, vars, names, args, get_all=False):
             loci = [region_filter_exclude(l, exclude[chrom]) for l in loci]
 
         if get_all:
-            yield chrom, ref, loci, all_loci
+            yield chrom, ref, loci, all_records
         else:
             yield chrom, ref, loci
 
 
 def get_superlocus_bounds(superloci):
-    start = min(super[ 0].left.start for super in superloci if super)
-    stop  = max(super[-1].left.stop  for super in superloci if super)
+    start = min(locus.left.start for super in superloci for locus in super)
+    stop  = max(locus.right.stop for super in superloci for locus in super)
     return start, stop
 
 
@@ -202,6 +187,10 @@ def superlocus_equal(ref, start, stop, super1, super2, debug=False):
 
         paths1, paths2 = intersect_paths(paths1, paths2)
 
+    except OverlapError:
+        status = None, 'N'
+
+    else:
         genos1 = set(generate_genotypes(paths1, constraints1, debug))
         genos2 = set(generate_genotypes(paths2, constraints2, debug))
 
@@ -210,7 +199,5 @@ def superlocus_equal(ref, start, stop, super1, super2, debug=False):
             status = False, 'H'
         else:
             status = True, 'H'
-    except ValueError:
-        status = None, 'N'
 
     return status
