@@ -81,6 +81,30 @@ class HomAltAllele(object):
         return 'HomAltAllele({}, {}, {})'.format(self.start, self.stop, seq)
 
 
+class NocallAllele(object):
+    __slots__ = ('start', 'stop')
+    phase = None
+
+    def __init__(self, start, stop):
+        self.start = start
+        self.stop = stop
+
+    def __len__(self):
+        return self.stop - self.start
+
+    @property
+    def seq(self):
+        return '.'*(self.stop-self.start)
+
+    def __repr__(self):
+        n = len(self)
+        if n < TRIM_MIN:
+            seq = '.'*n or '-'
+        else:
+            seq = '...'
+        return 'HomAltAllele({}, {}, {})'.format(self.start, self.stop, seq)
+
+
 class HetAltAllele(object):
     __slots__ = ('start', 'stop', 'seq', 'phase')
 
@@ -130,7 +154,7 @@ def generate_graph(ref, start, stop, loci, debug=False):
                 elif pos > locus.start:
                     raise OverlapError('overlapping locus: previous stop={}, current start={}'.format(pos, locus.start))
 
-            alleles = _make_alleles(ref, locus.start, locus.stop, locus.alleles, locus.allele_indices, locus.phased, zygosity_constraints)
+            alleles = _make_alleles(ref, locus, zygosity_constraints)
             yield locus.start, locus.stop, list(alleles)
             pos = locus.stop
 
@@ -140,8 +164,16 @@ def generate_graph(ref, start, stop, loci, debug=False):
     return _generate_graph(), zygosity_constraints
 
 
-def _make_alleles(ref, start, stop, alleles, indices, phased, zygosity_constraints):
+def _make_alleles(ref, locus, zygosity_constraints):
+    indices = locus.allele_indices
+
+    if None in indices or 'PASS' not in locus.record.filter:
+        yield NocallAllele(locus.start, locus.stop)
+        return
+
     index_set = set(indices)
+    alleles = locus.alleles
+    phased = locus.phased
     het = len(index_set) > 1
 
     for i in index_set:
@@ -149,7 +181,7 @@ def _make_alleles(ref, start, stop, alleles, indices, phased, zygosity_constrain
         if i and phased and het:
             # each alt allele is distinct
             for phasename in (j for j, idx in enumerate(indices) if i == idx):
-                allele = HetAltAllele(start, stop, alleles[i], phasename)
+                allele = HetAltAllele(locus.start, locus.stop, alleles[i], phasename)
                 zygosity_constraints[allele] = 1
                 yield allele
 
@@ -157,15 +189,15 @@ def _make_alleles(ref, start, stop, alleles, indices, phased, zygosity_constrain
         elif i:
             # single alt allele
             if het:
-                allele = HetAltAllele(start, stop, alleles[i])
+                allele = HetAltAllele(locus.start, locus.stop, alleles[i])
                 zygosity_constraints[allele] = indices.count(i)
             else:
-                allele = HomAltAllele(start, stop, alleles[i])
+                allele = HomAltAllele(locus.start, locus.stop, alleles[i])
             yield allele
 
         # Ref allele
         else:
-            yield RefAllele(start, stop, ref)
+            yield RefAllele(locus.start, locus.stop, ref)
 
 
 def generate_paths(graph, feasible_paths=None, debug=False):

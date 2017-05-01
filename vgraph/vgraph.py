@@ -20,6 +20,7 @@ import sys
 from argparse           import ArgumentParser
 
 from vgraph.repmatch    import match_replicates
+from vgraph.dbmatch     import match_database
 
 
 def tryint(s):
@@ -38,18 +39,11 @@ def tryint(s):
         return s
 
 
-def parse_args():
-    parser = ArgumentParser()
-    parser.add_argument('vcf1', help='VCF/BCF input 1 (- for stdin)')
-    parser.add_argument('vcf2', help='VCF/BCF input 2 (- for stdin)')
-    parser.add_argument('--out1', help='VCF/BCF output 1')
-    parser.add_argument('--out2', help='VCF/BCF output 2')
-    parser.add_argument('--name1', metavar='N', default=0, type=tryint,
-                        help='Name or index of sample in vcf1 (default=0)')
-    parser.add_argument('--name2', metavar='N', default=0, type=tryint,
-                        help='Name or index of sample in vcf2 (default=0)')
-    parser.add_argument('-p', '--reference-padding', metavar='N', default=3,
-                        help='Force loci within N bp into the same super locus (default=3)')
+def add_common_args(parser):
+    parser.add_argument('--reference', metavar='FASTA', required=True,
+                        help='Reference FASTA+FAI (required)')
+    parser.add_argument('-p', '--reference-padding', metavar='N', default=2,
+                        help='Pad variants by N bp when forming superloci (default=2)')
     parser.add_argument('--include-regions', metavar='BED', help='BED file of regions to include in comparison')
     parser.add_argument('--exclude-regions', metavar='BED', help='BED file of regions to exclude from comparison')
     parser.add_argument('--include-file-regions', metavar='BED', action='append',
@@ -63,24 +57,63 @@ def parse_args():
     parser.add_argument('--min-gq', metavar='N', type=int,
                         help='Exclude records with genotype quality (GQ) < N')
     #parser.add_argument('-o', '--out-vcf', default='-', help='Output VCF (- for stdout)')
-    parser.add_argument('--reference', metavar='FASTA', required=True, help='Reference FASTA+FAI')
+
+
+def arg_parser():
+    parser = ArgumentParser()
+    subparsers = parser.add_subparsers(help='Commands', dest='command')
+
+    repmatch_parser = subparsers.add_parser('repmatch', help='compare two replicate samples')
+    repmatch_parser.add_argument('vcf1', help='Sample 1 VCF/BCF input (- for stdin)')
+    repmatch_parser.add_argument('vcf2', help='Sample 2 VCF/BCF input (- for stdin)')
+    repmatch_parser.add_argument('--out1', help='Sample 1 VCF/BCF output (optional)')
+    repmatch_parser.add_argument('--out2', help='Sample 2 VCF/BCF output (optional)')
+    repmatch_parser.add_argument('--name1', metavar='N', default=0, type=tryint,
+                                 help='Name or index of sample in sample 1 file (default=0)')
+    repmatch_parser.add_argument('--name2', metavar='N', default=0, type=tryint,
+                                 help='Name or index of sample in sample 2 file (default=0)')
+
+    add_common_args(repmatch_parser)
+
+    dbmatch_parser = subparsers.add_parser('dbmatch', help='compare a database of alleles to a sample')
+    dbmatch_parser.add_argument('database', help='Database of alleles VCF/BCF input (- for stdin)')
+    dbmatch_parser.add_argument('sample',   help='Sample VCF/BCF input (- for stdin)')
+    dbmatch_parser.add_argument('--name', metavar='N', default=0, type=tryint,
+                                 help='Name or index of sample in sample file (default=0)')
+    dbmatch_parser.add_argument('-o', '--output', default='-', help='Sample VCF/BCF output')
+
+    add_common_args(dbmatch_parser)
+
     parser.add_argument('--debug', action='store_true', help='Output extremely verbose debugging information')
     parser.add_argument('--profile', action='store_true', help='Profile code performance')
 
-    return parser.parse_args()
+    return parser
+
+
+def run_analysis(parser, args):
+    if not args.command:
+        parser.print_help()
+    elif args.command == 'repmatch':
+        match_replicates(args)
+    elif args.command == 'dbmatch':
+        match_database(args)
+    else:
+        raise ValueError('Unknown command: {}'.format(args.command))
 
 
 def main():
-    args = parse_args()
+    parser = arg_parser()
+    args = parser.parse_args()
+
     if args.profile:
         import yappi
         yappi.start()
-        match_replicates(args)
+        run_analysis(parser, args)
         yappi.stop()
         stats = yappi.get_func_stats().sort('tsub').strip_dirs()
         stats.print_all(out=sys.stderr, columns={0: ('name', 45), 1: ('ncall', 10), 2: ('tsub', 8), 3: ('ttot', 8), 4: ('tavg', 8)})
     else:
-        match_replicates(args)
+        run_analysis(parser, args)
 
 
 if __name__ == '__main__':

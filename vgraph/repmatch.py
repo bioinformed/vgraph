@@ -51,8 +51,7 @@ def match_replicates(args):
     for chrom, ref, loci in variants_by_chromosome(refs, in_vars, [args.name1, args.name2], args):
         # Create superloci by taking the union of overlapping loci across all of the locus streams
         loci = [sort_almost_sorted(l, key=NormalizedLocus.extreme_order_key) for l in loci]
-        superloci = union(loci, min_distance=args.reference_padding,
-                                interval_func=attrgetter('min_start', 'max_stop'))
+        superloci = union(loci, interval_func=attrgetter('min_start', 'max_stop'))
 
         # Proceed by superlocus
         for _, _, (super1, super2) in superloci:
@@ -65,7 +64,7 @@ def match_replicates(args):
             print('{}:[{:d}-{:d}):'.format(chrom, super_start, super_stop))
             print()
 
-            for i, (name, superlocus) in enumerate([(args.name1, super1), (args.name2, super2)], 1):
+            for i, superlocus in enumerate([super1, super2], 1):
                 for locus in superlocus:
                     lstart = locus.start
                     lstop = locus.stop

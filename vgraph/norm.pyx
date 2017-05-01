@@ -40,8 +40,113 @@ class ReferenceMismatch(NormalizationError):
 NormalizedAlleles = namedtuple('NormalizedAlleles', 'start stop alleles')
 
 
-cpdef trim_common_suffixes(strs, int min_len=0, int max_trim=0):
+cdef inline bint intersects(int a_start, int a_stop, int b_start, int b_stop):
+    '''
+    Test if interval [start0, stop0) overlaps [start1, stop1) where [a, b) repesents a zero-based
+    half-open interval where a <= b.
+
+    Args:
+        a_start (int): start coordinate of first interval (int, 0-based, inclusive)
+        a_stop  (int): stop coordinate of first interval (int, 0-based, exclusive)
+        b_start (int): start coordinate of second interval (int, 0-based, inclusive)
+        b_stop  (int): stop coordinate of second interval (int, 0-based, exclusive)
+
+    Returns:
+        bool: True if intersect
+    '''
+    assert a_start <= a_stop
+    assert b_start <= b_stop
+
+    return (a_start == a_stop == b_start == b_stop) or a_stop > b_start and a_start < b_stop
+
+
+cpdef fancy_match(str s1, str s2):
+    cdef bytes b1 = s1.encode()
+    cdef bytes b2 = s2.encode()
+    cdef int n1 = len(b1)
+    cdef int n2 = len(b2)
+    cdef int i
+
+    if n1 != n2:
+        return False
+
+    cdef char *c1 = <char*>b1
+    cdef char *c2 = <char*>b2
+
+    for i in range(n1):
+        if c1[i] == b'*' or c2[i] == b'*':
+            pass
+        elif c1[i] == b'.' or c2[i] == b'.':
+            return None
+        elif c1[i] != c2[i]:
+            return False
+    return True
+
+
+cpdef trim_common_suffixes(strs, int max_trim=0):
     '''trim common suffixes
+
+    >>> trim_common_suffixes([])
+    (0, [])
+    >>> trim_common_suffixes(['AA'])
+    (0, ['AA'])
+    >>> trim_common_suffixes(['A','BA'])
+    (1, ['', 'B'])
+    >>> trim_common_suffixes(['A','AB'])
+    (0, ['A', 'AB'])
+    >>> trim_common_suffixes(['A','BA','BAAA'])
+    (1, ['', 'B', 'BAA'])
+    >>> trim_common_suffixes(['BA','ABA','AABA'])
+    (2, ['', 'A', 'AA'])
+    >>> trim_common_suffixes(['AB','ABA','ABAA','C'])
+    (0, ['AB', 'ABA', 'ABAA', 'C'])
+    >>> trim_common_suffixes(['AAAAAAAAA','AAAAAAAAA','AAAAAAAAA','AAAAAAAAA'])
+    (9, ['', '', '', ''])
+
+    '''
+    if len(strs) <= 1:
+        return 0, strs
+
+    cdef int i, trim = 0
+
+    cdef str s
+    cdef bytes str0 = strs[0].encode()
+    cdef bytes str1 = strs[1].encode()
+    cdef char *s0 = <char*>str0
+    cdef char *s1 = <char*>str1
+    cdef int n0 = len(str0) - 1
+    cdef int n1 = len(str1) - 1
+
+    while n0 >= 0 and n1 >= 0 and s0[n0] == s1[n1]:
+        trim += 1
+        n0 -= 1
+        n1 -= 1
+
+    for s in strs[2:]:
+        str1 = s.encode()
+        s1 = <char*>str1
+        n0 = len(str0) - 1
+        n1 = len(str1) - 1
+        i = 0
+        while n0 >= 0 and n1 >= 0 and i < trim and s0[n0] == s1[n1]:
+            i  += 1
+            n0 -= 1
+            n1 -= 1
+
+        if i < trim:
+            trim = i
+
+    if 0 < max_trim < trim:
+        trim = max_trim
+
+    if trim > 0:
+        strs = [s[:-trim] for s in strs]
+
+    return trim, strs
+
+
+cpdef trim_common_prefixes(strs, int max_trim=0):
+    '''trim common prefixes
 
     >>> trim_common_prefixes([])
     (0, [])
@@ -59,43 +164,37 @@ cpdef trim_common_suffixes(strs, int min_len=0, int max_trim=0):
     (0, ['AB', 'ABA', 'ABAA', 'C'])
     >>> trim_common_prefixes(['AAAAAAAAA','AAAAAAAAA','AAAAAAAAA','AAAAAAAAA'])
     (9, ['', '', '', ''])
-    '''
 
-    if len(strs) < 2:
+    '''
+    if len(strs) <= 1:
         return 0, strs
 
-    rev_strs = [ s[::-1] for s in strs ]
+    cdef int i, trim = 0
+    cdef str s
+    cdef bytes str0 = strs[0].encode()
+    cdef bytes str1 = strs[1].encode()
+    cdef char *s0 = <char*>str0
+    cdef char *s1 = <char*>str1
 
-    trimmed, rev_strs = trim_common_prefixes(rev_strs, min_len, max_trim)
+    while s0[trim] != 0 and s1[trim] != 0 and s0[trim] == s1[trim]:
+        trim += 1
 
-    if trimmed:
-        strs = [ s[::-1] for s in rev_strs ]
+    for s in strs[2:]:
+        str1 = s.encode()
+        s1 = <char*>str1
+        i = 0
+        while i < trim and s1[i] != 0 and s0[i] == s1[i]:
+            i += 1
+        if i < trim:
+            trim = i
 
-    return trimmed, strs
+    if 0 < max_trim < trim:
+        trim = max_trim
 
+    if trim > 0:
+        strs = [s[trim:] for s in strs]
 
-cpdef trim_common_prefixes(strs, int min_len=0, int max_trim=0):
-    '''trim common prefixes'''
-
-    cdef int i, trimmed = 0
-    cdef str s1, s2
-
-    if len(strs) > 1:
-        s1 = min(strs)
-        s2 = max(strs)
-
-        for i in range(len(s1) - min_len):
-            if s1[i] != s2[i]:
-                break
-            trimmed = i + 1
-
-    if 0 < max_trim < trimmed:
-        trimmed = max_trim
-
-    if trimmed > 0:
-        strs = [ s[trimmed:] for s in strs ]
-
-    return trimmed, strs
+    return trim, strs
 
 
 cdef shuffle_left(str ref, int *start, int *stop, alleles, int bound, int ref_step):
@@ -254,15 +353,17 @@ def suffixes(s):
 
 class NormalizedLocus(object):
     '''Normalization data for a single VCF record and genotype'''
-    __slots__ = ('recnum', 'record', 'start', 'stop', 'alleles', 'allele_indices', 'phased',
+    __slots__ = ('recnum', 'record', 'contig', 'start', 'stop', 'alleles', 'allele_indices', 'phased',
                  'min_start', 'max_stop', 'left', 'right')
 
-    def __init__(self, recnum, record, ref, name=None):
+    def __init__(self, recnum, record, ref, name=None, variant_padding=0):
         self.recnum = recnum
         self.record = record
+        self.contig = record.contig
 
         refa = ref[record.start:record.stop]
-        if record.alleles[0] != refa:
+
+        if record.alleles[0] != refa[0] and record.alleles[0] != refa:
             raise ReferenceMismatch('Reference mismatch at {}:{}-{}, found={}, expected={}'
                       .format(record.contig, record.start + 1, record.stop, record.alleles[0], refa))
 
@@ -270,13 +371,30 @@ class NormalizedLocus(object):
             sample = record.samples[name]
             self.allele_indices = sample.allele_indices
             self.phased = sample.phased
-
-            geno_alleles = (record.alleles[0],) + tuple(a for i, a in enumerate(record.alleles[1:], 1) if i in self.allele_indices)
-            self.allele_indices = tuple(geno_alleles.index(record.alleles[i]) for i in self.allele_indices)
-            self.alleles = geno_alleles
         else:
-            self.alleles = record.alleles
-            self.allele_indices = self.phased = None
+            self.phased = False
+            self.allele_indices = (0, 1)
+
+        geno_alleles = (record.alleles[0],) + tuple(a for i, a in enumerate(record.alleles[1:], 1) if i in self.allele_indices)
+        self.allele_indices = tuple(geno_alleles.index(record.alleles[i]) if i is not None else None for i in self.allele_indices)
+        self.alleles = geno_alleles
+
+        # Detect and handle refcalls and no-calls
+        ploidy         = len(self.allele_indices)
+        ref_alleles    = self.allele_indices.count(0)
+        nocall_alleles = self.allele_indices.count(None)
+
+        #else:
+        #    self.alleles = record.alleles
+        #    self.allele_indices = self.phased = None
+        #    ploidy = ref_alleles = nocall_alleles = 0
+
+        if ref_alleles + nocall_alleles == ploidy:
+            self.left = self.right = self
+            self.start, self.stop = record.start, record.stop
+            self.min_start = record.start
+            self.max_stop  = record.stop
+            return
 
         # Left shuffle locus with all alt alleles considered simultaneously
         self.left = normalize_alleles(ref, record.start, record.stop, self.alleles, left=True)
@@ -300,8 +418,8 @@ class NormalizedLocus(object):
                   (normalize_alleles(ref, stop - len(r), stop, (r,    ''),     left=False).stop for r in suffixes(refa) if r),
                   (normalize_alleles(ref, stop,          stop, ('',   sufalt), left=False).stop for alt in alts for sufalt in suffixes(alt) if sufalt)]
 
-        self.min_start = min(chain.from_iterable(lefts))
-        self.max_stop  = max(chain.from_iterable(rights))
+        self.min_start = max(0, min(chain.from_iterable(lefts)) - variant_padding)
+        self.max_stop  = max(chain.from_iterable(rights)) + variant_padding
 
     def extreme_order_key(self):
         return self.min_start, self.max_stop
@@ -314,3 +432,12 @@ class NormalizedLocus(object):
 
     def record_order_key(self):
         return self.recnum
+
+    def intersects(self, other):
+        return intersects(self.start, self.stop, other.start, other.stop)
+
+    def extremes_intersect(self, other):
+        return intersects(self.min_start, self.max_stop, other.min_start, other.max_stop)
+
+    def is_ref(self):
+        return len(self.allele_indices) == self.allele_indices.count(0)

@@ -16,10 +16,12 @@
 ## under the License.
 
 
+from itertools          import chain
+
 from vgraph.bed         import load_bedmap
-from vgraph.norm        import NormalizedLocus
+from vgraph.norm        import NormalizedLocus, fancy_match
 from vgraph.intervals   import union
-from vgraph.iterstuff   import sort_almost_sorted, is_empty_iter
+from vgraph.iterstuff   import sort_almost_sorted, is_empty_iter, unique_everseen
 from vgraph.linearmatch import generate_graph, generate_paths, generate_genotypes, intersect_paths, \
                                OverlapError
 
@@ -34,17 +36,40 @@ def is_alt_genotype(record, name):
     return not (not indices or None in indices or indices.count(0) == len(indices) or max(indices) >= len(record.alleles))
 
 
-def records_to_loci(ref, records, name):
+def records_to_loci(ref, records, name, variant_padding):
     for recnum, record in enumerate(records):
-        if valid_alleles(record.alleles) and is_alt_genotype(record, name):
-            locus = NormalizedLocus(recnum, record, ref, name)
-            yield locus
+        yield NormalizedLocus(recnum, record, ref, name, variant_padding)
 
 
-def informative_chromosomes(vars):
-    if not vars.index:
+def all_contigs(varfiles):
+    """
+    Return all contigs in order seen in the variant file header and index
+
+    Args:
+        varfiles: Input variant file object
+
+    Returns:
+        All unique contigs of the file
+    """
+    contigs = list(varfiles.header.contigs)
+    if varfiles.index:
+        contigs.extend(varfiles.index)
+    return unique_everseen(contigs)
+
+
+def informative_contigs(varfile):
+    """
+    Scan an indexed variant file to determine which contigs have alignments
+
+    Args:
+        varfile: Input variant file object
+
+    Returns:
+        All contigs that have data
+    """
+    if not varfile.index:
         raise ValueError('Variant file requires index')
-    return (chrom for chrom in vars.index if not is_empty_iter(vars.fetch(chrom)))
+    return (contig for contig in varfile.index if not is_empty_iter(varfile.fetch(contig)))
 
 
 def region_filter_include(records, include):
@@ -83,32 +108,29 @@ def filter_records(records, name, args):
     return records
 
 
-def variants_by_chromosome(refs, vars, names, args, get_all=False):
-    for var in vars:
-        if not var.index:
-            raise ValueError('Input variant file `{}` is missing an index'.format(var.filename))
-
-    chroms = [set(informative_chromosomes(var)) for var in vars]
-    chroms = set.union(*chroms)
+def variants_by_chromosome(refs, varfiles, names, args, get_all=False):
+    contigs_all   = unique_everseen(chain.from_iterable(all_contigs(var) for var in varfiles))
+    contigs_seen  = set(chain.from_iterable(informative_contigs(var) for var in varfiles))
+    contigs_fetch = [contig for contig in contigs_all if contig in contigs_seen]
 
     if args.include_regions is not None:
         include = load_bedmap(args.include_regions)
-        chroms &= set(include)
+        contigs_fetch &= set(include)
 
     if args.exclude_regions is not None:
         exclude = load_bedmap(args.exclude_regions)
 
     if args.include_file_regions:
-        assert len(args.include_file_regions) == len(vars)
+        assert len(args.include_file_regions) == len(varfiles)
         include_files = [load_bedmap(fn) for fn in args.include_file_regions]
 
     if args.exclude_file_regions:
-        assert len(args.exclude_file_regions) == len(vars)
+        assert len(args.exclude_file_regions) == len(varfiles)
         exclude_files = [load_bedmap(fn) for fn in args.exclude_file_regions]
 
-    for chrom in chroms:
-        ref  = refs.fetch(chrom).upper()
-        records = [var.fetch(chrom) for var in vars]
+    for chrom in contigs_fetch:
+        ref = refs.fetch(chrom).upper()
+        records = [var.fetch(chrom) if chrom in var.index else [] for var in varfiles]
 
         if get_all:
             all_records = records = [list(l) for l in records]
@@ -120,7 +142,7 @@ def variants_by_chromosome(refs, vars, names, args, get_all=False):
         if args.exclude_file_regions:
             records = [region_filter_exclude(r, exl[chrom]) for r, exl in zip(records, exclude_files)]
 
-        loci = [records_to_loci(ref, r, name) for name, r in zip(names, records)]
+        loci = [records_to_loci(ref, r, name, args.reference_padding) for name, r in zip(names, records)]
         loci = [sort_almost_sorted(l, key=NormalizedLocus.natural_order_key) for l in loci]
 
         if args.include_regions is not None:
@@ -135,8 +157,8 @@ def variants_by_chromosome(refs, vars, names, args, get_all=False):
 
 
 def get_superlocus_bounds(superloci):
-    start = min(locus.left.start for super in superloci for locus in super)
-    stop  = max(locus.right.stop for super in superloci for locus in super)
+    start = min(locus.min_start for super in superloci for locus in super)
+    stop  = max(locus.max_stop  for super in superloci for locus in super)
     return start, stop
 
 
@@ -174,7 +196,7 @@ def superlocus_equal(ref, start, stop, super1, super2, debug=False):
     if superlocus_equal_trivial(super1, super2):
        return True, 'T'
 
-    # Bounds come from left normalized extremes
+    # Bounds come from normalized extremes
     start, stop = get_superlocus_bounds([super1, super2])
 
     # Create genotype sets for each superlocus
@@ -201,3 +223,62 @@ def superlocus_equal(ref, start, stop, super1, super2, debug=False):
             status = True, 'H'
 
     return status
+
+
+def find_allele(ref, allele, superlocus, debug=False):
+    if (len(superlocus) == 1 and allele.start == superlocus[0].start
+                             and allele.stop  == superlocus[0].stop
+                             and allele.alleles[1] in superlocus[0].alleles
+                             and 'PASS' in superlocus[0].record.filter):
+        i = superlocus[0].alleles.index(allele.alleles[1])
+        z = superlocus[0].allele_indices.count(i)
+        assert z > 0
+        return z
+
+    # Bounds come from normalized extremes
+    start, stop = get_superlocus_bounds([[allele], superlocus])
+
+
+    if 1:  # allele.start == allele.stop:
+        left_delta = min(2, allele.start - start)
+        right_delta = min(2, stop - allele.stop)
+
+        assert left_delta >= 0
+        assert right_delta >= 0
+
+        super_allele = ('*'*(allele.start-start-left_delta)
+                     + ref[allele.start-left_delta:allele.start]
+                     + allele.alleles[1]
+                     + ref[allele.stop:allele.stop+right_delta]
+                     + '*'*(stop-allele.stop-right_delta))
+    else:
+        super_allele = ref[start:allele.start] + allele.alleles[1] + ref[allele.stop:stop]
+
+    assert len(super_allele) == stop-start-len(allele.alleles[0])+len(allele.alleles[1])
+
+    # Create genotype sets for each superlocus
+    try:
+        graph, constraints = generate_graph(ref, start, stop, superlocus, debug)
+        paths = generate_paths(graph, debug=debug)
+
+    except OverlapError:
+        z = None
+
+    else:
+        genos = set(generate_genotypes(paths, constraints, debug))
+        matches = sorted((fancy_match(super_allele, a1), fancy_match(super_allele, a2)) for a1, a2 in genos)
+        z = max(((a1 or 0) + (a2 or 0)) for a1,a2 in matches)
+
+        matches2 = [g.count(super_allele) for g in genos]
+        if not z and any(None in m for m in matches):
+            z = None
+
+        print('  ALLELE: {}'.format(super_allele))
+        for i, (g, m, m2) in enumerate(zip(genos, matches, matches2)):
+            print('   GENO{:02d}: {}'.format(i, g))
+            print('  MATCH{:02d}: {}'.format(i, m))
+            print('  MATCH{:02d}: {}'.format(i, m2))
+        print()
+        print('  ZYGOSITY: {}'.format(z))
+
+    return z

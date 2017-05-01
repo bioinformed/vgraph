@@ -14,6 +14,11 @@
 ## License for the specific language governing permissions and limitations
 ## under the License.
 
+import sys
+
+if sys.version_info < (3, 5):
+    sys.exit('Sorry, Python 3.5 or newer is required to install and run vgraph')
+
 
 from setuptools import setup, find_packages
 from Cython.Distutils import build_ext
@@ -54,7 +59,6 @@ if __name__ == '__main__':
         license = 'APACHE-2.0',
         classifiers = classifiers.split('\n'),
         zip_safe = False,
-        test_suite = 'nose.collector',
         tests_require = tests_require,
         packages = find_packages(),
         install_requires = install_requires,
