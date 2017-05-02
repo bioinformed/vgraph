@@ -6,22 +6,10 @@ Kevin Jacobs <jacobs@bioinfomed.com>
 ``vgraph`` is a command line application and Python library to compare
 genetic variants using variant graphs.  Conventional methods used to compare
 variants apply heuristic normalization rules and then compare variants
-individually by matching based on genomic position and allele information. 
+individually by matching based on genomic position and allele information.
 In contrast, ``vgraph`` utilizes a graph representation of genomic variants
 in to precisely compare complex variants that are refractory to comparison
 using conventional methods.
-
-**NOTICE:** ``vgraph`` is under heavy development and is not yet ready for
-production use.  The graph model and comparison logic is becoming mature and
-continues to be validated and fine tuned on data from diverse variant
-callers.  However, output is still very verbose, diagnostic heavy and
-doesn't have built-in aggregation, but is usable with basic technical
-knowledge.  Please treat these versions as "alpha" quality that are suitable
-for evaluation by other tool developers and skilled technical users.  The
-first beta version will be ready shortly and will be more "end user"
-friendly and will have pretty output and nice aggregation and summary output
-statistics.  A production-ready release for the masses is planned in the
-near future.
 
 Input
 -----
@@ -34,62 +22,120 @@ genome in FASTA+FAI format.
 Output
 ------
 
-``vgraph`` is current in an early development state and currently outputs
-diagnostic only information.  The output will be improved in future versions
-to generate::
-
-    1. Annotated VCF/BCF files with per-record match status
-    2. Detailed output and diagnostic information for mismatching loci
-    3. Summary statistics (overall and stratified by variant type and context)
+``vgraph`` outputs diagnostic only information to stdout.  In `repmatch`
+mode, there are options to output either of the two input files with match
+status annotations.  In `dbmatch` mode, the `sample` input file is output
+after copying all new INFO and FORMT annotations from the `database` file.
 
 Usage
 -----
 
 ``vgraph`` takes the following command line parameters::
 
-    usage: vgraph [-h] [--name1 N] [--name2 N] [-p N] [-i INCLUDE] [-o OUT_VCF]
-                  --reference FASTA [--debug] [--profile]
-                  vcf1 vcf2
+    usage: vgraph [-h] [--debug] [--profile] {repmatch,dbmatch} ...
 
     positional arguments:
-      vcf1                  VCF/BCF input 1 (- for stdin).
-      vcf2                  VCF/BCF input 2 (- for stdin).
+      {repmatch,dbmatch}  Commands
+        repmatch          compare two replicate samples
+        dbmatch           compare a database of alleles to a sample
 
     optional arguments:
-      -h, --help            show this help message and exit
-      --name1 N             Name or index of sample in vcf1 (default=0).
-      --name2 N             Name or index of sample in vcf2 (default=0).
-      -p N, --reference-padding N
-                            Force loci within N bp into the same super locus
-                            (default=2).
-      -i INCLUDE, --include INCLUDE
-                            BED file of high confidence regions to compare
-      -o OUT_VCF, --out-vcf OUT_VCF
-                            Output VCF (- for stdout).
-      --reference FASTA     Reference FASTA+FAI
-      --debug               Output extremely verbose debugging information
-      --profile             Profile code performance
+      -h, --help          show this help message and exit
+      --debug             Output extremely verbose debugging information
+      --profile           Profile code performance
+
+The parameters for ``repmatch`` are::
+
+      usage: vgraph repmatch [-h] [--out1 OUT1] [--out2 OUT2] [--name1 N]
+                             [--name2 N] --reference FASTA [-p N]
+                             [--include-regions BED] [--exclude-regions BED]
+                             [--include-file-regions BED]
+                             [--exclude-file-regions BED] [--include-filter F]
+                             [--exclude-filter F] [--min-gq N]
+                             vcf1 vcf2
+
+      positional arguments:
+        vcf1                  Sample 1 VCF/BCF input (- for stdin)
+        vcf2                  Sample 2 VCF/BCF input (- for stdin)
+
+      optional arguments:
+        -h, --help            show this help message and exit
+        --out1 OUT1           Sample 1 VCF/BCF output (optional)
+        --out2 OUT2           Sample 2 VCF/BCF output (optional)
+        --name1 N             Name or index of sample in sample 1 file (default=0)
+        --name2 N             Name or index of sample in sample 2 file (default=0)
+        --reference FASTA     Reference FASTA+FAI (required)
+        -p N, --reference-padding N
+                              Pad variants by N bp when forming superloci
+                              (default=2)
+        --include-regions BED
+                              BED file of regions to include in comparison
+        --exclude-regions BED
+                              BED file of regions to exclude from comparison
+        --include-file-regions BED
+                              BED file of regions to include for each input file
+        --exclude-file-regions BED
+                              BED file of regions to exclude from comparison for
+                              each input file
+        --include-filter F    Include records with filter status F. Option may be
+                              specified multiple times or F can be comma delimited
+        --exclude-filter F    Exclude records with filter status F. Option may be
+                              specified multiple times or F can be comma delimited
+        --min-gq N            Exclude records with genotype quality (GQ) < N
+
+
+The parameters for ``dbmatch`` are::
+
+      usage: vgraph dbmatch [-h] [--name N] [-o OUTPUT] --reference FASTA [-p N]
+                            [--include-regions BED] [--exclude-regions BED]
+                            [--include-file-regions BED]
+                            [--exclude-file-regions BED] [--include-filter F]
+                            [--exclude-filter F] [--min-gq N]
+                            database sample
+
+      positional arguments:
+        database              Database of alleles VCF/BCF input (- for stdin)
+        sample                Sample VCF/BCF input (- for stdin)
+
+      optional arguments:
+        -h, --help            show this help message and exit
+        --name N              Name or index of sample in sample file (default=0)
+        -o OUTPUT, --output OUTPUT
+                              Sample VCF/BCF output
+        --reference FASTA     Reference FASTA+FAI (required)
+        -p N, --reference-padding N
+                              Pad variants by N bp when forming superloci
+                              (default=2)
+        --include-regions BED
+                              BED file of regions to include in comparison
+        --exclude-regions BED
+                              BED file of regions to exclude from comparison
+        --include-file-regions BED
+                              BED file of regions to include for each input file
+        --exclude-file-regions BED
+                              BED file of regions to exclude from comparison for
+                              each input file
+        --include-filter F    Include records with filter status F. Option may be
+                              specified multiple times or F can be comma delimited
+        --exclude-filter F    Exclude records with filter status F. Option may be
+                              specified multiple times or F can be comma delimited
+        --min-gq N            Exclude records with genotype quality (GQ) < N
+
 
 Installation
 ------------
 
 Before ``vgraph`` may be installed, your systems requires a C compiler, a
-functioning version of Python 2.7 with development libraries installed, and
-the ``pip`` installer.  The steps to install and ensuring these tools are
-functional depend on your operating system and personal configuration. 
-Proceed only once these pre-requisites are available.
+functioning version of Python 3.5 or newer with development libraries
+installed, and the ``pip`` installer.  The steps to install and ensuring
+these tools are functional depend on your operating system and personal
+configuration.  Proceed only once these pre-requisites are available.
 
-First install the latest version of the Cython package::
+First install the latest version of the Cython and pysam packages::
 
     pip install -U Cython
+    pip install -U pysam
 
-``vgraph`` currently requires a pre-release version of the ``pysam``
-package.  This requirement will be lifted soon and an official release of
-``pysam`` will be required instead.  In the mean time, install this
-version::
-
-    pip install -U git+https://github.com/pysam-developers/pysam
-
-If all these steps have succeeded, then finally install ``vgraph``::
+If all these steps have succeeded, then install ``vgraph``::
 
     pip install -U git+https://github.com/bioinformed/vgraph.git
