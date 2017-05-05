@@ -16,8 +16,8 @@
 
 import sys
 
-if sys.version_info < (3, 5):
-    sys.exit('Sorry, Python 3.5 or newer is required to install and run vgraph')
+if sys.version_info < (3, 4):
+    sys.exit('Sorry, Python 3.4 or newer is required to install and run vgraph')
 
 
 from setuptools import setup, find_packages
