@@ -24,8 +24,8 @@ from setuptools import setup, find_packages
 from Cython.Distutils import build_ext
 from distutils.extension import Extension
 
-install_requires = ['Cython>=0.22', 'pysam>=0.8.3']
-setup_requires   = ['setuptools_scm', 'pytest-runner', 'pysam>=0.8.3']
+install_requires = ['Cython', 'pysam']
+setup_requires   = ['pytest-runner', 'pysam']
 tests_require    = ['pytest', 'coverage']
 
 
@@ -49,7 +49,6 @@ Topic :: Scientific/Engineering :: Bioinformatics
 if __name__ == '__main__':
     setup(
         name = 'vgraph',
-        use_scm_version=True,
         description = 'Graph-based variant normalization and comparison tools',
         url = 'https://github.com/bioinformed/vgraph',
         author = 'Kevin Jacobs',
