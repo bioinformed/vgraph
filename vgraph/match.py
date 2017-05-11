@@ -115,7 +115,7 @@ def variants_by_chromosome(refs, varfiles, names, args, get_all=False):
 
     if args.include_regions is not None:
         include = load_bedmap(args.include_regions)
-        contigs_fetch &= set(include)
+        contigs_fetch = [contig for contig in contigs_fetch if contig in include]
 
     if args.exclude_regions is not None:
         exclude = load_bedmap(args.exclude_regions)
