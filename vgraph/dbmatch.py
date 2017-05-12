@@ -15,6 +15,7 @@
 ## License for the specific language governing permissions and limitations
 ## under the License.
 
+import sys
 from os.path            import expanduser
 from operator           import attrgetter
 
@@ -23,7 +24,7 @@ from pysam              import VariantFile, Fastafile
 from vgraph.norm        import NormalizedLocus
 from vgraph.intervals   import union
 from vgraph.iterstuff   import sort_almost_sorted
-from vgraph.match       import variants_by_chromosome, get_superlocus_bounds, superlocus_equal, find_allele
+from vgraph.match       import variants_by_chromosome, get_superlocus_bounds, find_allele
 
 
 def match_database(args):
@@ -79,14 +80,14 @@ def match_database(args):
 
                     super_start, super_stop = get_superlocus_bounds([[allele], super_trimmed])
 
-                    print('-'*80)
-                    print('{}:[{:d}-{:d}):'.format(chrom, super_start, super_stop))
-                    print()
+                    print('-'*80, file=sys.stderr)
+                    print('{}:[{:d}-{:d}):'.format(chrom, super_start, super_stop), file=sys.stderr)
+                    print(file=sys.stderr)
 
                     print('  ALLELE: {} {}:[{}-{}) ref={} alt={}'.format(allele.record.id, allele.contig,
                                                                          allele.start, allele.stop,
-                                                                         allele.alleles[0] or '-', allele.alleles[1] or '-'))
-                    print()
+                                                                         allele.alleles[0] or '-', allele.alleles[1] or '-'), file=sys.stderr)
+                    print(file=sys.stderr)
 
                     for i, locus in enumerate(super_trimmed, 1):
                         lref = locus.alleles[0] or '-'
@@ -98,13 +99,13 @@ def match_database(args):
                         else:
                             sep = '|' if locus.phased else '/'
                             geno = sep.join(locus.alleles[a] or '-' if a is not None else '.' for a in indices)
-                        print('  VAR{:d}: {}[{:5d}-{:5d}) ref={} geno={}'.format(i, locus.contig, locus.start, locus.stop, lref, geno))
-                    print()
+                        print('  VAR{:d}: {}[{:5d}-{:5d}) ref={} geno={}'.format(i, locus.contig, locus.start, locus.stop, lref, geno), file=sys.stderr)
+                    print(file=sys.stderr)
 
                     match_zygosity = find_allele(ref, allele, super_trimmed, debug=args.debug)
 
-                    print('    MATCH={}'.format(match_zygosity))
-                    print()
+                    print('    MATCH={}'.format(match_zygosity), file=sys.stderr)
+                    print(file=sys.stderr)
 
                     if match_zygosity is None:
                         suffix = '_NOCALL'

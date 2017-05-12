@@ -54,7 +54,7 @@ class RefAllele(object):
 
     @property
     def seq(self):
-        return self.ref[self.start:self.stop]
+        return self.ref[self.start:self.stop].upper()
 
     def __len__(self):
         return self.stop - self.start

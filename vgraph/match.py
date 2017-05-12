@@ -247,12 +247,12 @@ def find_allele(ref, allele, superlocus, debug=False):
         assert right_delta >= 0
 
         super_allele = ('*'*(allele.start-start-left_delta)
-                     + ref[allele.start-left_delta:allele.start]
+                     + ref[allele.start-left_delta:allele.start].upper()
                      + allele.alleles[1]
-                     + ref[allele.stop:allele.stop+right_delta]
+                     + ref[allele.stop:allele.stop+right_delta].upper()
                      + '*'*(stop-allele.stop-right_delta))
     else:
-        super_allele = ref[start:allele.start] + allele.alleles[1] + ref[allele.stop:stop]
+        super_allele = ref[start:allele.start].upper() + allele.alleles[1] + ref[allele.stop:stop].upper()
 
     assert len(super_allele) == stop-start-len(allele.alleles[0])+len(allele.alleles[1])
 
