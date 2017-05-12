@@ -362,10 +362,11 @@ class NormalizedLocus(object):
         self.contig = record.contig
 
         refa = ref[record.start:record.stop].upper()
+        rec_ref = record.ref.upper()
 
-        if record.alleles[0] != refa[0] and record.alleles[0] != refa:
+        if rec_ref != refa[0] and rec_ref != refa:
             raise ReferenceMismatch('Reference mismatch at {}:{}-{}, found={}, expected={}'
-                      .format(record.contig, record.start + 1, record.stop, record.alleles[0], refa))
+                      .format(record.contig, record.start + 1, record.stop, rec_ref, refa))
 
         if name is not None:
             sample = record.samples[name]

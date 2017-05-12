@@ -71,7 +71,7 @@ class HomAltAllele(object):
     def __init__(self, start, stop, seq):
         self.start = start
         self.stop = stop
-        self.seq = seq
+        self.seq = seq.upper()
 
     def __len__(self):
         return self.stop - self.start
@@ -111,7 +111,7 @@ class HetAltAllele(object):
     def __init__(self, start, stop, seq, phase=None):
         self.start = start
         self.stop = stop
-        self.seq = seq
+        self.seq = seq.upper()
         self.phase = phase
 
     def __len__(self):

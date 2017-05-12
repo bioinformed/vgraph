@@ -238,7 +238,6 @@ def find_allele(ref, allele, superlocus, debug=False):
     # Bounds come from normalized extremes
     start, stop = get_superlocus_bounds([[allele], superlocus])
 
-
     if 1:  # allele.start == allele.stop:
         left_delta = min(2, allele.start - start)
         right_delta = min(2, stop - allele.stop)
@@ -247,12 +246,14 @@ def find_allele(ref, allele, superlocus, debug=False):
         assert right_delta >= 0
 
         super_allele = ('*'*(allele.start-start-left_delta)
-                     + ref[allele.start-left_delta:allele.start].upper()
+                     + ref[allele.start-left_delta:allele.start]
                      + allele.alleles[1]
-                     + ref[allele.stop:allele.stop+right_delta].upper()
+                     + ref[allele.stop:allele.stop+right_delta]
                      + '*'*(stop-allele.stop-right_delta))
     else:
-        super_allele = ref[start:allele.start].upper() + allele.alleles[1] + ref[allele.stop:stop].upper()
+        super_allele = ref[start:allele.start] + allele.alleles[1] + ref[allele.stop:stop]
+
+    super_allele = super_allele.upper()
 
     assert len(super_allele) == stop-start-len(allele.alleles[0])+len(allele.alleles[1])
 
