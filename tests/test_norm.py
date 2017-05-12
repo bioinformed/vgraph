@@ -1,6 +1,13 @@
 import doctest
 
-from vgraph.norm import trim_common_prefixes, trim_common_suffixes
+from vgraph.norm import normalize_seq, trim_common_prefixes, trim_common_suffixes
+
+
+def test_normalize_seq():
+    assert normalize_seq('') == ''
+    assert normalize_seq('ACGT') == 'ACGT'
+    assert normalize_seq('ACGTNacgtNRYSWKMBDHV') == 'ACGTNACGTNNNNNNNNNNN'
+
 
 def test_trim_common_prefixes():
     '''

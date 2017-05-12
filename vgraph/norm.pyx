@@ -40,6 +40,27 @@ class ReferenceMismatch(NormalizationError):
 NormalizedAlleles = namedtuple('NormalizedAlleles', 'start stop alleles')
 
 
+cdef dict seq_normalization_table = str.maketrans('ACGTNacgtNRYSWKMBDHV', 'ACGTNACGTNNNNNNNNNNN')
+
+
+cpdef str normalize_seq(str seq):
+    """Normalize DNA sequence for case and IUPAC ambiguity codes.
+
+    Mapping table::
+
+        Un-normalized: ACGTacgtNnRYSWKMBDHV
+        Normalized:    ACGTACGTNNNNNNNNNNNN
+
+    Args:
+        seq (str): DNA sequence containing only ACGTNacgtNRYSWKMBDHV characters
+
+    Returns:
+        str: Normalized sequence
+
+    """
+    return seq.translate(seq_normalization_table)
+
+
 cdef inline bint intersects(int a_start, int a_stop, int b_start, int b_stop):
     '''
     Test if interval [start0, stop0) overlaps [start1, stop1) where [a, b) repesents a zero-based
@@ -203,7 +224,7 @@ cdef shuffle_left(str ref, int *start, int *stop, alleles, int bound, int ref_st
     while 0 < alleles.count('') < n and start[0] > bound:
         step = min(ref_step, start[0] - bound)
 
-        r = ref[start[0] - step:start[0]].upper()
+        r = normalize_seq(ref[start[0] - step:start[0]])
         new_alleles = [ r+a for a in alleles ]
 
         trimmed, new_alleles = trim_common_suffixes(new_alleles)
@@ -229,7 +250,7 @@ cdef shuffle_right(str ref, int *start, int *stop, alleles, int bound, int ref_s
 
     while 0 < alleles.count('') < n and stop[0] < bound:
         step = min(ref_step, bound - stop[0])
-        r = ref[stop[0]:stop[0]+step].upper()
+        r = normalize_seq(ref[stop[0]:stop[0]+step])
         new_alleles = [ a+r for a in alleles ]
 
         trimmed, new_alleles = trim_common_prefixes(new_alleles)
@@ -265,9 +286,9 @@ cdef normalize_alleles_left(str ref, int start, int stop, alleles, int bound, in
     '''Normalize loci by removing extraneous reference padding'''
     cdef int trimmed
 
-    alleles = [a.upper() for a in alleles]
+    alleles = list(map(normalize_seq, alleles))
 
-    if alleles[0] != ref[start:stop].upper():
+    if alleles[0] != normalize_seq(ref[start:stop]):
         raise ReferenceMismatch('Reference alleles does not match reference sequence: {} != {}'.format(alleles[0], ref[start:stop]))
 
     if len(alleles) < 2 or start <= 0:
@@ -304,9 +325,9 @@ cdef normalize_alleles_right(str ref, int start, int stop, alleles, int bound, i
     '''Normalize loci by removing extraneous reference padding'''
     cdef int trimmed, chrom_stop = len(ref)
 
-    alleles = [a.upper() for a in alleles]
+    alleles = list(map(normalize_seq, alleles))
 
-    if alleles[0] != ref[start:stop].upper():
+    if alleles[0] != normalize_seq(ref[start:stop]):
         raise ReferenceMismatch('Reference alleles does not match reference sequence: {} != {}'.format(alleles[0], ref[start:stop]))
 
     if len(alleles) < 2 or stop >= chrom_stop:
@@ -365,8 +386,8 @@ class NormalizedLocus(object):
         self.record = record
         self.contig = record.contig
 
-        refa = ref[record.start:record.stop].upper()
-        rec_ref = record.ref.upper()
+        refa = normalize_seq(ref[record.start:record.stop])
+        rec_ref = normalize_seq(record.ref)
 
         if rec_ref != refa[0] and rec_ref != refa:
             raise ReferenceMismatch('Reference mismatch at {}:{}-{}, found={}, expected={}'

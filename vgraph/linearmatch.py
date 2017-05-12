@@ -18,6 +18,8 @@
 from itertools   import combinations, combinations_with_replacement
 from collections import defaultdict
 
+from vgraph.norm import normalize_seq
+
 
 EMPTY_PATH = ('', [], set(), set())
 
@@ -54,7 +56,7 @@ class RefAllele(object):
 
     @property
     def seq(self):
-        return self.ref[self.start:self.stop].upper()
+        return normalize_seq(self.ref[self.start:self.stop])
 
     def __len__(self):
         return self.stop - self.start
@@ -71,7 +73,7 @@ class HomAltAllele(object):
     def __init__(self, start, stop, seq):
         self.start = start
         self.stop = stop
-        self.seq = seq.upper()
+        self.seq = normalize_seq(seq)
 
     def __len__(self):
         return self.stop - self.start
@@ -111,7 +113,7 @@ class HetAltAllele(object):
     def __init__(self, start, stop, seq, phase=None):
         self.start = start
         self.stop = stop
-        self.seq = seq.upper()
+        self.seq = normalize_seq(seq)
         self.phase = phase
 
     def __len__(self):

@@ -19,7 +19,7 @@
 from itertools          import chain
 
 from vgraph.bed         import load_bedmap
-from vgraph.norm        import NormalizedLocus, fancy_match
+from vgraph.norm        import NormalizedLocus, fancy_match, normalize_seq
 from vgraph.intervals   import union
 from vgraph.iterstuff   import sort_almost_sorted, is_empty_iter, unique_everseen
 from vgraph.linearmatch import generate_graph, generate_paths, generate_genotypes, intersect_paths, \
@@ -129,7 +129,7 @@ def variants_by_chromosome(refs, varfiles, names, args, get_all=False):
         exclude_files = [load_bedmap(fn) for fn in args.exclude_file_regions]
 
     for chrom in contigs_fetch:
-        ref = refs.fetch(chrom).upper()
+        ref = normalize_seq(refs.fetch(chrom))
         records = [var.fetch(chrom) if chrom in var.index else [] for var in varfiles]
 
         if get_all:
@@ -253,9 +253,9 @@ def find_allele(ref, allele, superlocus, debug=False):
     else:
         super_allele = ref[start:allele.start] + allele.alleles[1] + ref[allele.stop:stop]
 
-    super_allele = super_allele.upper()
+    super_allele = normalize_seq(super_allele)
 
-    assert len(super_allele) == stop-start-len(allele.alleles[0])+len(allele.alleles[1])
+    assert len(super_allele) == stop - start - len(allele.alleles[0]) + len(allele.alleles[1])
 
     # Create genotype sets for each superlocus
     try:
