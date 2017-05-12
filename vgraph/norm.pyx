@@ -265,7 +265,7 @@ cdef normalize_alleles_left(str ref, int start, int stop, alleles, int bound, in
     '''Normalize loci by removing extraneous reference padding'''
     cdef int trimmed
 
-    if alleles[0] != ref[start:stop]:
+    if alleles[0] != ref[start:stop].upper():
         raise ReferenceMismatch('Reference alleles does not match reference sequence: {} != {}'.format(alleles[0], ref[start:stop]))
 
     if len(alleles) < 2 or start <= 0:
@@ -302,7 +302,7 @@ cdef normalize_alleles_right(str ref, int start, int stop, alleles, int bound, i
     '''Normalize loci by removing extraneous reference padding'''
     cdef int trimmed, chrom_stop = len(ref)
 
-    if alleles[0] != ref[start:stop]:
+    if alleles[0] != ref[start:stop].upper():
         raise ReferenceMismatch('Reference alleles does not match reference sequence: {} != {}'.format(alleles[0], ref[start:stop]))
 
     if len(alleles) < 2 or stop >= chrom_stop:
@@ -361,7 +361,7 @@ class NormalizedLocus(object):
         self.record = record
         self.contig = record.contig
 
-        refa = ref[record.start:record.stop]
+        refa = ref[record.start:record.stop].upper()
 
         if record.alleles[0] != refa[0] and record.alleles[0] != refa:
             raise ReferenceMismatch('Reference mismatch at {}:{}-{}, found={}, expected={}'
