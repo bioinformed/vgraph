@@ -8,6 +8,9 @@ import os
 from subprocess import Popen, PIPE
 from pathlib import Path
 
+import pysam
+
+
 def spawn_compressor(exe, filename, mode, buffering=-1, encoding=None, errors=None, newline=None):
     """
     Spawn a subprocess to run a (de)compressor like gzip or bzip2.
@@ -100,12 +103,16 @@ def smartfile(filename, mode='r', buffering=-1, encoding=None, errors=None, newl
 
     filename = os.path.expanduser(filename)
 
-    if 'r' in mode and not Path(filename).exists():
+    if 'r' in mode and not filename.startswith('s3:') and not Path(filename).exists():
         raise IOError('file does not exist')
 
     comp = compressed_filename(filename)
 
-    if not comp:
+    if filename.startswith('s3:'):
+        f = pysam.HFile(filename, mode)
+        if 'b' not in mode:
+            f = io.TextIOWrapper(f, encoding, errors, newline)
+    elif not comp:
         f = open(filename, mode, buffering, encoding, errors, newline)
     elif comp == 'gzip':
         try:
