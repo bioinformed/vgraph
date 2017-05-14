@@ -23,7 +23,7 @@ from pysam              import VariantFile, Fastafile
 from vgraph.norm        import NormalizedLocus
 from vgraph.intervals   import union
 from vgraph.iterstuff   import sort_almost_sorted
-from vgraph.match       import variants_by_chromosome, get_superlocus_bounds, superlocus_equal
+from vgraph.match       import records_by_chromosome, get_superlocus_bounds, superlocus_equal
 
 
 def match_replicates(args):
@@ -48,7 +48,7 @@ def match_replicates(args):
     match_status_map = {True : '=', False : 'X', None : '.'}
 
     # Create parallel locus iterator by chromosome
-    for chrom, ref, loci in variants_by_chromosome(refs, in_vars, [args.name1, args.name2], args):
+    for chrom, ref, loci in records_by_chromosome(refs, in_vars, [args.name1, args.name2], args):
         # Create superloci by taking the union of overlapping loci across all of the locus streams
         loci = [sort_almost_sorted(l, key=NormalizedLocus.extreme_order_key) for l in loci]
         superloci = union(loci, interval_func=attrgetter('min_start', 'max_stop'))

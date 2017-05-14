@@ -22,6 +22,7 @@ from vgraph.bed         import load_bedmap
 from vgraph.norm        import NormalizedLocus, fancy_match, normalize_seq
 from vgraph.intervals   import union
 from vgraph.iterstuff   import sort_almost_sorted, is_empty_iter, unique_everseen
+from vgraph.lazy_fasta  import LazyFastaContig
 from vgraph.linearmatch import generate_graph, generate_paths, generate_genotypes, intersect_paths, \
                                OverlapError
 
@@ -108,7 +109,7 @@ def filter_records(records, name, args):
     return records
 
 
-def variants_by_chromosome(refs, varfiles, names, args, get_all=False):
+def records_by_chromosome(refs, varfiles, names, args, get_all=False):
     contigs_all   = unique_everseen(chain.from_iterable(all_contigs(var) for var in varfiles))
     contigs_seen  = set(chain.from_iterable(informative_contigs(var) for var in varfiles))
     contigs_fetch = [contig for contig in contigs_all if contig in contigs_seen]
@@ -128,9 +129,9 @@ def variants_by_chromosome(refs, varfiles, names, args, get_all=False):
         assert len(args.exclude_file_regions) == len(varfiles)
         exclude_files = [load_bedmap(fn) for fn in args.exclude_file_regions]
 
-    for chrom in contigs_fetch:
-        ref = normalize_seq(refs.fetch(chrom))
-        records = [var.fetch(chrom) if chrom in var.index else [] for var in varfiles]
+    for contig in contigs_fetch:
+        ref = LazyFastaContig(refs, contig)
+        records = [var.fetch(contig) if contig in var.index else [] for var in varfiles]
 
         if get_all:
             all_records = records = [list(l) for l in records]
@@ -138,22 +139,22 @@ def variants_by_chromosome(refs, varfiles, names, args, get_all=False):
         records = [filter_records(r, name, args) for r, name in zip(records, names)]
 
         if args.include_file_regions:
-            records = [region_filter_include(r, inc[chrom]) for r, inc in zip(records, include_files)]
+            records = [region_filter_include(r, inc[contig]) for r, inc in zip(records, include_files)]
         if args.exclude_file_regions:
-            records = [region_filter_exclude(r, exl[chrom]) for r, exl in zip(records, exclude_files)]
+            records = [region_filter_exclude(r, exl[contig]) for r, exl in zip(records, exclude_files)]
 
         loci = [records_to_loci(ref, r, name, args.reference_padding) for name, r in zip(names, records)]
         loci = [sort_almost_sorted(l, key=NormalizedLocus.natural_order_key) for l in loci]
 
         if args.include_regions is not None:
-            loci = [region_filter_include(l, include[chrom]) for l in loci]
+            loci = [region_filter_include(l, include[contig]) for l in loci]
         if args.exclude_regions is not None:
-            loci = [region_filter_exclude(l, exclude[chrom]) for l in loci]
+            loci = [region_filter_exclude(l, exclude[contig]) for l in loci]
 
         if get_all:
-            yield chrom, ref, loci, all_records
+            yield contig, ref, loci, all_records
         else:
-            yield chrom, ref, loci
+            yield contig, ref, loci
 
 
 def get_superlocus_bounds(superloci):
@@ -267,18 +268,16 @@ def find_allele(ref, allele, superlocus, debug=False):
 
     else:
         genos = set(generate_genotypes(paths, constraints, debug))
-        matches = sorted((fancy_match(super_allele, a1), fancy_match(super_allele, a2)) for a1, a2 in genos)
+        matches = [(fancy_match(super_allele, a1), fancy_match(super_allele, a2)) for a1, a2 in genos]
         z = max(((a1 or 0) + (a2 or 0)) for a1,a2 in matches)
 
-        matches2 = [g.count(super_allele) for g in genos]
         if not z and any(None in m for m in matches):
             z = None
 
         print('  ALLELE: {}'.format(super_allele))
-        for i, (g, m, m2) in enumerate(zip(genos, matches, matches2)):
+        for i, (g, m) in enumerate(zip(genos, matches)):
             print('   GENO{:02d}: {}'.format(i, g))
             print('  MATCH{:02d}: {}'.format(i, m))
-            print('  MATCH{:02d}: {}'.format(i, m2))
         print()
         print('  ZYGOSITY: {}'.format(z))
 

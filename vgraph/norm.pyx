@@ -218,7 +218,7 @@ cpdef trim_common_prefixes(strs, int max_trim=0):
     return trim, strs
 
 
-cdef shuffle_left(str ref, int *start, int *stop, alleles, int bound, int ref_step):
+cdef shuffle_left(ref, int *start, int *stop, alleles, int bound, int ref_step):
     cdef int trimmed, step, left, n = len(alleles)
 
     while 0 < alleles.count('') < n and start[0] > bound:
@@ -245,7 +245,7 @@ cdef shuffle_left(str ref, int *start, int *stop, alleles, int bound, int ref_st
     return alleles
 
 
-cdef shuffle_right(str ref, int *start, int *stop, alleles, int bound, int ref_step):
+cdef shuffle_right(ref, int *start, int *stop, alleles, int bound, int ref_step):
     cdef int trimmed, step, left, n = len(alleles)
 
     while 0 < alleles.count('') < n and stop[0] < bound:
@@ -271,7 +271,7 @@ cdef shuffle_right(str ref, int *start, int *stop, alleles, int bound, int ref_s
     return alleles
 
 
-cpdef normalize_alleles(str ref, int start, int stop, alleles, int bound=-1, int ref_step=24, left=True, bint shuffle=True):
+cpdef normalize_alleles(ref, int start, int stop, alleles, int bound=-1, int ref_step=24, left=True, bint shuffle=True):
     if left:
         if bound < 0:
             bound = 0
@@ -282,7 +282,7 @@ cpdef normalize_alleles(str ref, int start, int stop, alleles, int bound=-1, int
         return normalize_alleles_right(ref, start, stop, alleles, bound, ref_step, shuffle)
 
 
-cdef normalize_alleles_left(str ref, int start, int stop, alleles, int bound, int ref_step=24, bint shuffle=True):
+cdef normalize_alleles_left(ref, int start, int stop, alleles, int bound, int ref_step=24, bint shuffle=True):
     '''Normalize loci by removing extraneous reference padding'''
     cdef int trimmed
 
@@ -321,7 +321,7 @@ cdef normalize_alleles_left(str ref, int start, int stop, alleles, int bound, in
     return NormalizedAlleles(start, stop, tuple(alleles))
 
 
-cdef normalize_alleles_right(str ref, int start, int stop, alleles, int bound, int ref_step=24, bint shuffle=True):
+cdef normalize_alleles_right(ref, int start, int stop, alleles, int bound, int ref_step=24, bint shuffle=True):
     '''Normalize loci by removing extraneous reference padding'''
     cdef int trimmed, chrom_stop = len(ref)
 
@@ -386,13 +386,6 @@ class NormalizedLocus(object):
         self.record = record
         self.contig = record.contig
 
-        refa = normalize_seq(ref[record.start:record.stop])
-        rec_ref = normalize_seq(record.ref)
-
-        if rec_ref != refa[0] and rec_ref != refa:
-            raise ReferenceMismatch('Reference mismatch at {}:{}-{}, found={}, expected={}'
-                      .format(record.contig, record.start + 1, record.stop, rec_ref, refa))
-
         if name is not None:
             sample = record.samples[name]
             self.allele_indices = sample.allele_indices
@@ -410,17 +403,19 @@ class NormalizedLocus(object):
         ref_alleles    = self.allele_indices.count(0)
         nocall_alleles = self.allele_indices.count(None)
 
-        #else:
-        #    self.alleles = record.alleles
-        #    self.allele_indices = self.phased = None
-        #    ploidy = ref_alleles = nocall_alleles = 0
-
         if ref_alleles + nocall_alleles == ploidy:
             self.left = self.right = self
             self.start, self.stop = record.start, record.stop
             self.min_start = record.start
             self.max_stop  = record.stop
             return
+
+        refa = normalize_seq(ref[record.start:record.stop])
+        rec_ref = normalize_seq(record.ref)
+
+        if rec_ref != refa[0] and rec_ref != refa:
+            raise ReferenceMismatch('Reference mismatch at {}:{}-{}, found={}, expected={}'
+                      .format(record.contig, record.start + 1, record.stop, rec_ref, refa))
 
         # Left shuffle locus with all alt alleles considered simultaneously
         self.left = normalize_alleles(ref, record.start, record.stop, self.alleles, left=True)
