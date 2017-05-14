@@ -24,8 +24,8 @@ from setuptools import setup, find_packages
 from Cython.Distutils import build_ext
 from distutils.extension import Extension
 
-install_requires = ['Cython', 'pysam==0.11.1']
-setup_requires   = ['pytest-runner', 'pysam==0.11.1']
+install_requires = ['Cython', 'pysam']
+setup_requires   = ['pytest-runner', 'pysam']
 tests_require    = ['pytest', 'coverage']
 
 
