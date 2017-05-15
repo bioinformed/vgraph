@@ -42,6 +42,7 @@ def tryint(s):
 def add_common_args(parser):
     parser.add_argument('--reference', metavar='FASTA', required=True,
                         help='Reference FASTA+FAI (required)')
+    parser.add_argument('--lazy-ref', action='store_true', help='Read reference file as needed (lazily), rather than all upfront.')
     parser.add_argument('-p', '--reference-padding', metavar='N', default=2,
                         help='Pad variants by N bp when forming superloci (default=2)')
     parser.add_argument('--include-regions', metavar='BED', help='BED file of regions to include in comparison')
