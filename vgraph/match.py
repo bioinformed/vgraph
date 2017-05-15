@@ -138,6 +138,11 @@ def records_by_chromosome(refs, varfiles, names, args, get_all=False):
 
         records = [filter_records(r, name, args) for r, name in zip(records, names)]
 
+        if args.include_regions is not None:
+            records = [region_filter_include(r, include[contig]) for r in records]
+        if args.exclude_regions is not None:
+            records = [region_filter_exclude(r, exclude[contig]) for r in records]
+
         if args.include_file_regions:
             records = [region_filter_include(r, inc[contig]) for r, inc in zip(records, include_files)]
         if args.exclude_file_regions:
@@ -146,10 +151,6 @@ def records_by_chromosome(refs, varfiles, names, args, get_all=False):
         loci = [records_to_loci(ref, r, name, args.reference_padding) for name, r in zip(names, records)]
         loci = [sort_almost_sorted(l, key=NormalizedLocus.natural_order_key) for l in loci]
 
-        if args.include_regions is not None:
-            loci = [region_filter_include(l, include[contig]) for l in loci]
-        if args.exclude_regions is not None:
-            loci = [region_filter_exclude(l, exclude[contig]) for l in loci]
 
         if get_all:
             yield contig, ref, loci, all_records

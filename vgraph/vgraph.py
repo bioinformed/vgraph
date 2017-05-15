@@ -108,10 +108,12 @@ def main():
     if args.profile:
         import yappi
         yappi.start()
-        run_analysis(parser, args)
-        yappi.stop()
-        stats = yappi.get_func_stats().sort('tsub').strip_dirs()
-        stats.print_all(out=sys.stderr, columns={0: ('name', 45), 1: ('ncall', 10), 2: ('tsub', 8), 3: ('ttot', 8), 4: ('tavg', 8)})
+        try:
+            run_analysis(parser, args)
+        finally:
+            yappi.stop()
+            stats = yappi.get_func_stats().sort('tsub').strip_dirs()
+            stats.print_all(out=sys.stderr, columns={0: ('name', 45), 1: ('ncall', 10), 2: ('tsub', 8), 3: ('ttot', 8), 4: ('tavg', 8)})
     else:
         run_analysis(parser, args)
 
