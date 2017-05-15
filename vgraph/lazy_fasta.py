@@ -42,7 +42,7 @@ class LazyFastaContig:
         result = ''.join(self._get_blocks(index))
 
         # Use as sanity check when debugging -- will be removed after verification
-        if 0:
+        if 1:
             expected = self.fasta.fetch(self.contig, index.start, index.stop)
             assert result == expected
 
@@ -108,5 +108,4 @@ class LazyFastaContig:
             block = self.fasta.fetch(self.contig, block_index * self.block_size, (block_index + 1) * self.block_size)
             self.cache[block_index] = block
 
-        assert len(block) == self.block_size
         return block
