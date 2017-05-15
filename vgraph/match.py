@@ -130,7 +130,7 @@ def records_by_chromosome(refs, varfiles, names, args, get_all=False):
         exclude_files = [load_bedmap(fn) for fn in args.exclude_file_regions]
 
     for contig in contigs_fetch:
-        if args.lazy:
+        if args.lazy_ref:
             ref = LazyFastaContig(refs, contig)
         else:
             ref = refs.fetch(contig)
