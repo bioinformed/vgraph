@@ -26,7 +26,7 @@ from distutils.extension import Extension
 
 
 install_requires = ['Cython', 'pysam']
-setup_requires   = ['pytest-runner', 'pysam']
+setup_requires   = ['pytest-runner', 'pysam', 'setuptools_scm==1.15.0']
 tests_require    = ['pytest', 'coverage']
 
 
@@ -61,6 +61,7 @@ if __name__ == '__main__':
         maintainer_email = 'jacobs@bioinformed.com',
         license = 'APACHE-2.0',
         classifiers = classifiers.split('\n'),
+        use_scm_version=True,
         zip_safe = False,
         tests_require = tests_require,
         packages = find_packages(),
