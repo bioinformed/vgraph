@@ -93,14 +93,19 @@ cpdef fancy_match(str s1, str s2):
 
     cdef char *c1 = <char*>b1
     cdef char *c2 = <char*>b2
+    cdef int uncertain = 0
 
     for i in range(n1):
         if c1[i] == b'*' or c2[i] == b'*':
             pass
         elif c1[i] == b'.' or c2[i] == b'.':
-            return None
+            uncertain += 1
         elif c1[i] != c2[i]:
             return False
+
+    if uncertain:
+        return None
+
     return True
 
 
