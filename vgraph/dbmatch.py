@@ -39,23 +39,23 @@ def match_database(args):
     for fmt, meta in db.header.formats.items():
         if fmt not in sample.header.formats:
             format_meta.append(meta.name)
-            sample.header.formats.add(meta.name + '_FOUND',    meta.number, meta.type,
-                                      'Allele(s) found: ' + meta.description)
-            sample.header.formats.add(meta.name + '_NOTFOUND', meta.number, meta.type,
-                                      'Allele(s) not found: ' + meta.description)
-            sample.header.formats.add(meta.name + '_NOCALL',   meta.number, meta.type,
-                                      'Allele(s) with uncertain presense: ' + meta.description)
+            sample.header.formats.add(meta.name + '_FOUND',    number='.', type=meta.type,
+                                      description='Allele(s) found: ' + meta.description)
+            sample.header.formats.add(meta.name + '_NOTFOUND', number='.', type=meta.type,
+                                      description='Allele(s) not found: ' + meta.description)
+            sample.header.formats.add(meta.name + '_NOCALL',   number='.', type=meta.type,
+                                      description='Allele(s) with uncertain presense: ' + meta.description)
 
     info_meta = []
     for info, meta in db.header.info.items():
         if info not in sample.header.info:
             info_meta.append(meta.name)
-            sample.header.info.add(meta.name + '_FOUND',    meta.number, meta.type,
-                                   'Allele(s) found: ' + meta.description)
-            sample.header.info.add(meta.name + '_NOTFOUND', meta.number, meta.type,
-                                   'Allele(s) not found: ' + meta.description)
-            sample.header.info.add(meta.name + '_NOCALL',   meta.number, meta.type,
-                                   'Allele(s) with uncertain presense: ' + meta.description)
+            sample.header.info.add(meta.name + '_FOUND',    number='.', type=meta.type,
+                                   description='Allele(s) found: ' + meta.description)
+            sample.header.info.add(meta.name + '_NOTFOUND', number='.', type=meta.type,
+                                   description='Allele(s) not found: ' + meta.description)
+            sample.header.info.add(meta.name + '_NOCALL',   number='.', type=meta.type,
+                                   description='Allele(s) with uncertain presense: ' + meta.description)
 
     with VariantFile(args.output, 'w', header=sample.header) as out:
         # Create parallel locus iterator by chromosome
@@ -118,22 +118,29 @@ def match_database(args):
                         if not locus.intersects(allele):
                             continue
 
-                        if suffix == '_FOUND':
-                            locus.record.id = allele.record.id
+                        times = 2 if suffix == '_FOUND' else 1
+
+                        #if suffix == '_FOUND':
+                        #    locus.record.id = allele.record.id
 
                         for name in info_meta:
                             if name in allele.record.info:
                                 sname = name + suffix
-                                value = locus.record.info[sname] if sname in locus.record.info else ()
-                                locus.record.info[sname] = value + (allele.record.info[name],)
+                                orig_value = locus.record.info.get(sname, ())
+                                new_value = allele.record.info[name]
+                                if not isinstance(new_value, tuple):
+                                    new_value = (new_value,)
+                                locus.record.info[sname] = orig_value + new_value*times
 
                         sample = locus.record.samples[0]
                         for name in format_meta:
                             if name in allele.record.format:
                                 sname = name + suffix
-                                value = sample[sname] if sample.get(sname) else ()
-                                sample[sname] = value + allele.record.samples[0][name]
+                                orig_value = sample.get(sname, ())
+                                new_value = allele.record.samples[0][name]
+                                if not isinstance(new_value, tuple):
+                                    new_value = (new_value,)
+                                sample[sname] = orig_value + new_value*times
 
                 for locus in sorted(super2, key=NormalizedLocus.record_order_key):
                     out.write(locus.record)
-    
