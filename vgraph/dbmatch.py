@@ -65,14 +65,14 @@ def match_database(args):
             superloci = union(loci, interval_func=attrgetter('min_start', 'max_stop'))
 
             # Proceed by superlocus
-            for _, _, (super2, alleles) in superloci:
+            for _, _, (superlocus, alleles) in superloci:
                 alleles.sort(key=NormalizedLocus.natural_order_key)
-                super2.sort(key=NormalizedLocus.natural_order_key)
+                superlocus.sort(key=NormalizedLocus.natural_order_key)
 
                 for allele in alleles:
-                    super_all = [locus for locus in super2 if locus.extremes_intersect(allele)]
+                    super_all = [locus for locus in superlocus if locus.extremes_intersect(allele)]
 
-                    super_trimmed = super_all.copy()
+                    super_trimmed = superlocus.copy()
                     while super_trimmed and super_trimmed[-1].is_ref():
                         super_trimmed.pop()
                     while super_trimmed and super_trimmed[0].is_ref():
@@ -115,13 +115,7 @@ def match_database(args):
                         suffix = '_FOUND'
 
                     for locus in super_all:
-                        if not locus.intersects(allele):
-                            continue
-
                         times = 2 if suffix == '_FOUND' else 1
-
-                        #if suffix == '_FOUND':
-                        #    locus.record.id = allele.record.id
 
                         for name in info_meta:
                             if name in allele.record.info:
@@ -142,5 +136,5 @@ def match_database(args):
                                     new_value = (new_value,)
                                 sample[sname] = orig_value + new_value*times
 
-                for locus in sorted(super2, key=NormalizedLocus.record_order_key):
+                for locus in sorted(superlocus, key=NormalizedLocus.record_order_key):
                     out.write(locus.record)
