@@ -104,7 +104,7 @@ class NocallAllele(object):
             seq = '.'*n or '-'
         else:
             seq = '...'
-        return 'HomAltAllele({}, {}, {})'.format(self.start, self.stop, seq)
+        return 'NocallAllele({}, {}, {})'.format(self.start, self.stop, seq)
 
 
 class HetAltAllele(object):
