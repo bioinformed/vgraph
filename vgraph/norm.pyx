@@ -466,4 +466,4 @@ class NormalizedLocus(object):
         return intersects(self.min_start, self.max_stop, other.min_start, other.max_stop)
 
     def is_ref(self):
-        return len(self.allele_indices) == self.allele_indices.count(0)
+        return bool(self.allele_indices) and len(self.allele_indices) == self.allele_indices.count(0)
