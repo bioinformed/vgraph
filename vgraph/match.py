@@ -16,6 +16,7 @@
 ## under the License.
 
 
+import sys
 from itertools          import chain
 
 from vgraph.bed         import load_bedmap
@@ -234,7 +235,7 @@ def superlocus_equal(ref, start, stop, super1, super2, debug=False):
 def find_allele(ref, allele, superlocus, debug=False):
     if (len(superlocus) == 1 and allele.start == superlocus[0].start
                              and allele.stop  == superlocus[0].stop
-                             and allele.alleles[1] in superlocus[0].alleles
+                             and allele.alleles[1] in superlocus[0].alleles[1:]
                              and 'PASS' in superlocus[0].record.filter):
         i = superlocus[0].alleles.index(allele.alleles[1])
         z = superlocus[0].allele_indices.count(i)
@@ -251,6 +252,9 @@ def find_allele(ref, allele, superlocus, debug=False):
         assert left_delta >= 0
         assert right_delta >= 0
 
+        if debug:
+            print('  Allele: start={}, stop={}, size={}, seq={}'.format(allele.start, allele.stop, allele.stop-allele.start, allele.alleles[1]), file=sys.stderr)
+
         super_allele = ('*'*(allele.start-start-left_delta)
                      + ref[allele.start-left_delta:allele.start]
                      + allele.alleles[1]
@@ -266,7 +270,20 @@ def find_allele(ref, allele, superlocus, debug=False):
     # Create genotype sets for each superlocus
     try:
         graph, constraints = generate_graph(ref, start, stop, superlocus, debug)
+        graph = list(graph)
+
+        if debug:
+            for i, (start, stop, alleles) in enumerate(graph):
+                print('  GRAPH{:02d}: start={}, stop={}, alleles={}'.format(i, start, stop, alleles), file=sys.stderr)
+            print(file=sys.stderr)
+
         paths = generate_paths(graph, debug=debug)
+
+        if debug:
+            paths = list(paths)
+            for i, p in enumerate(paths):
+                print('  PATH{:02d}: {}'.format(i, p), file=sys.stderr)
+            print(file=sys.stderr)
 
     except OverlapError:
         z = None
@@ -279,11 +296,12 @@ def find_allele(ref, allele, superlocus, debug=False):
         if not z and any(None in m for m in matches):
             z = None
 
-        print('  ALLELE: {}'.format(super_allele))
-        for i, (g, m) in enumerate(zip(genos, matches)):
-            print('   GENO{:02d}: {}'.format(i, g))
-            print('  MATCH{:02d}: {}'.format(i, m))
-        print()
-        print('  ZYGOSITY: {}'.format(z))
+        if debug:
+            print('   ALLELE:{} {}'.format(len(super_allele), super_allele), file=sys.stderr)
+            for i, (g, m) in enumerate(zip(genos, matches)):
+                print('   GENO{:02d}:{} {}'.format(i, tuple(map(len, g)),  g), file=sys.stderr)
+                print('  MATCH{:02d}: {}'.format(i, m), file=sys.stderr)
+            print(file=sys.stderr)
+            print('  ZYGOSITY: {}'.format(z), file=sys.stderr)
 
     return z
