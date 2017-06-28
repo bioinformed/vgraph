@@ -72,7 +72,7 @@ def match_database(args):
                 for allele in alleles:
                     super_all = [locus for locus in superlocus if locus.extremes_intersect(allele)]
 
-                    super_trimmed = superlocus.copy()
+                    super_trimmed = super_all.copy()
                     while super_trimmed and super_trimmed[-1].is_ref():
                         super_trimmed.pop()
                     while super_trimmed and super_trimmed[0].is_ref():
