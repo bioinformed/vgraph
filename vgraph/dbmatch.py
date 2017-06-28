@@ -114,8 +114,8 @@ def match_database(args):
                     else:
                         suffix = '_FOUND'
 
-                    for locus in super_all:
-                        times = 2 if suffix == '_FOUND' else 1
+                    for locus in super_trimmed:
+                        times = match_zygosity if suffix == '_FOUND' else 1
 
                         for name in info_meta:
                             if name in allele.record.info:
