@@ -67,9 +67,6 @@ class LazyFastaContig:
         start_block = (index.start // block_size)
         stop_block  = ((index.stop - 1)  // block_size)
 
-        start_index = pos = start_block * block_size
-        stop_index  = (stop_block + 1) * block_size
-
         for block_index in range(start_block, stop_block + 1):
             block = self._get_block(block_index)
             block_start = block_index * block_size
@@ -83,8 +80,6 @@ class LazyFastaContig:
             # Trim left if needed
             if block_start < index.start:
                 block = block[index.start - block_start:]
-
-            pos += block_size
 
             yield block
 
