@@ -43,14 +43,10 @@ def add_common_args(parser):
     parser.add_argument('--reference', metavar='FASTA', required=True,
                         help='Reference FASTA+FAI (required)')
     parser.add_argument('--lazy-ref', action='store_true', help='Read reference file as needed (lazily), rather than all upfront.')
-    parser.add_argument('-p', '--reference-padding', metavar='N', default=2,
+    parser.add_argument('-p', '--reference-padding', metavar='N', type=int, default=2,
                         help='Pad variants by N bp when forming superloci (default=2)')
     parser.add_argument('--include-regions', metavar='BED', help='BED file of regions to include in comparison')
     parser.add_argument('--exclude-regions', metavar='BED', help='BED file of regions to exclude from comparison')
-    parser.add_argument('--include-file-regions', metavar='BED', action='append',
-                        help='BED file of regions to include for each input file')
-    parser.add_argument('--exclude-file-regions', metavar='BED', action='append',
-                        help='BED file of regions to exclude from comparison for each input file')
     parser.add_argument('--include-filter', metavar='F', action='append',
                         help='Include records with filter status F.  Option may be specified multiple times or F can be comma delimited')
     parser.add_argument('--exclude-filter', metavar='F', action='append',
@@ -82,6 +78,8 @@ def arg_parser():
     dbmatch_parser.add_argument('--name', metavar='N', default=0, type=tryint,
                                  help='Name or index of sample in sample file (default=0)')
     dbmatch_parser.add_argument('-o', '--output', default='-', help='Sample VCF/BCF output')
+    dbmatch_parser.add_argument('--flanking-reference', metavar='N', type=int, default=2,
+                                help='Matches must have N bp of flanking reference (default=2)')
 
     add_common_args(dbmatch_parser)
 

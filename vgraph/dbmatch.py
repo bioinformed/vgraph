@@ -102,7 +102,7 @@ def match_database(args):
                         print('  VAR{:d}: {}[{:5d}-{:5d}) ref={} geno={}'.format(i, locus.contig, locus.start, locus.stop, lref, geno), file=sys.stderr)
                     print(file=sys.stderr)
 
-                    match_zygosity = find_allele(ref, allele, super_trimmed, debug=args.debug)
+                    match_zygosity = find_allele(ref, allele, super_trimmed, flanking_reference=args.flanking_reference, debug=args.debug)
 
                     print('    MATCH={}'.format(match_zygosity), file=sys.stderr)
                     print(file=sys.stderr)

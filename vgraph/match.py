@@ -122,14 +122,6 @@ def records_by_chromosome(refs, varfiles, names, args, get_all=False):
     if args.exclude_regions is not None:
         exclude = load_bedmap(args.exclude_regions)
 
-    if args.include_file_regions:
-        assert len(args.include_file_regions) == len(varfiles)
-        include_files = [load_bedmap(fn) for fn in args.include_file_regions]
-
-    if args.exclude_file_regions:
-        assert len(args.exclude_file_regions) == len(varfiles)
-        exclude_files = [load_bedmap(fn) for fn in args.exclude_file_regions]
-
     for contig in contigs_fetch:
         if args.lazy_ref:
             ref = LazyFastaContig(refs, contig)
@@ -148,14 +140,8 @@ def records_by_chromosome(refs, varfiles, names, args, get_all=False):
         if args.exclude_regions is not None:
             records = [region_filter_exclude(r, exclude[contig]) for r in records]
 
-        if args.include_file_regions:
-            records = [region_filter_include(r, inc[contig]) for r, inc in zip(records, include_files)]
-        if args.exclude_file_regions:
-            records = [region_filter_exclude(r, exl[contig]) for r, exl in zip(records, exclude_files)]
-
         loci = [records_to_loci(ref, r, name, args.reference_padding) for name, r in zip(names, records)]
         loci = [sort_almost_sorted(l, key=NormalizedLocus.natural_order_key) for l in loci]
-
 
         if get_all:
             yield contig, ref, loci, all_records
@@ -232,7 +218,7 @@ def superlocus_equal(ref, start, stop, super1, super2, debug=False):
     return status
 
 
-def find_allele(ref, allele, superlocus, debug=False):
+def find_allele(ref, allele, superlocus, flanking_reference=2, debug=False):
     if (len(superlocus) == 1 and allele.start == superlocus[0].start
                              and allele.stop  == superlocus[0].stop
                              and allele.alleles[1] in superlocus[0].alleles[1:]
@@ -245,23 +231,20 @@ def find_allele(ref, allele, superlocus, debug=False):
     # Bounds come from normalized extremes
     start, stop = get_superlocus_bounds([[allele], superlocus])
 
-    if 1:  # allele.start == allele.stop:
-        left_delta = min(2, allele.start - start)
-        right_delta = min(2, stop - allele.stop)
+    left_delta  = max(0, min(flanking_reference, allele.start - start))
+    right_delta = max(0, min(flanking_reference, stop - allele.stop))
 
-        assert left_delta >= 0
-        assert right_delta >= 0
+    assert left_delta >= 0
+    assert right_delta >= 0
 
-        if debug:
-            print('  Allele: start={}, stop={}, size={}, seq={}'.format(allele.start, allele.stop, allele.stop-allele.start, allele.alleles[1]), file=sys.stderr)
+    if debug:
+        print('  Allele: start={}, stop={}, size={}, seq={}'.format(allele.start, allele.stop, allele.stop-allele.start, allele.alleles[1]), file=sys.stderr)
 
-        super_allele = ('*'*(allele.start-start-left_delta)
-                     + ref[allele.start-left_delta:allele.start]
-                     + allele.alleles[1]
-                     + ref[allele.stop:allele.stop+right_delta]
-                     + '*'*(stop-allele.stop-right_delta))
-    else:
-        super_allele = ref[start:allele.start] + allele.alleles[1] + ref[allele.stop:stop]
+    super_allele = ('*'*(allele.start-start-left_delta)
+                 + ref[allele.start-left_delta:allele.start]
+                 + allele.alleles[1]
+                 + ref[allele.stop:allele.stop+right_delta]
+                 + '*'*(stop-allele.stop-right_delta))
 
     super_allele = normalize_seq(super_allele)
 
