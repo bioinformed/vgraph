@@ -27,6 +27,29 @@ from vgraph.iterstuff   import sort_almost_sorted
 from vgraph.match       import records_by_chromosome, get_superlocus_bounds, find_allele
 
 
+def annotate_info(locus, allele, info_meta, suffix, times):
+    for name in info_meta:
+        if name in allele.record.info:
+            sname = name + suffix
+            orig_value = locus.record.info.get(sname, ())
+            new_value = allele.record.info[name]
+            if not isinstance(new_value, tuple):
+                new_value = (new_value,)
+            locus.record.info[sname] = orig_value + new_value*times
+
+
+def annotate_format(locus, allele, format_meta, suffix, times):
+    sample = locus.record.samples[0]
+    for name in format_meta:
+        if name in allele.record.format:
+            sname = name + suffix
+            orig_value = sample.get(sname, ())
+            new_value = allele.record.samples[0][name]
+            if not isinstance(new_value, tuple):
+                new_value = (new_value,)
+            sample[sname] = orig_value + new_value*times
+
+
 def match_database(args):
     # Load FASTA reference
     refs = Fastafile(expanduser(args.reference))
@@ -70,43 +93,45 @@ def match_database(args):
                 superlocus.sort(key=NormalizedLocus.natural_order_key)
 
                 for allele in alleles:
-                    super_all = [locus for locus in superlocus if locus.extremes_intersect(allele)]
+                    super_allele = [locus for locus in superlocus if locus.extremes_intersect(allele)]
 
-                    super_trimmed = super_all.copy()
-                    while super_trimmed and super_trimmed[-1].is_ref():
-                        super_trimmed.pop()
-                    while super_trimmed and super_trimmed[0].is_ref():
-                        super_trimmed.pop(0)
+                    # Remove all reference calls from the superlocus.
+                    # This is primarily done to remove long leading and trailing reference regions.
+                    # Interstitial reference regions will be added back, based on how gaps are handled.
+                    super_non_ref = [locus for locus in super_allele if not locus.is_ref()]
 
-                    super_start, super_stop = get_superlocus_bounds([[allele], super_trimmed])
+                    if args.debug:
+                        super_start, super_stop = get_superlocus_bounds([[allele], super_non_ref])
+                        print('-'*80, file=sys.stderr)
+                        print('{}:[{:d}-{:d}):'.format(chrom, super_start, super_stop), file=sys.stderr)
+                        print(file=sys.stderr)
 
-                    print('-'*80, file=sys.stderr)
-                    print('{}:[{:d}-{:d}):'.format(chrom, super_start, super_stop), file=sys.stderr)
-                    print(file=sys.stderr)
+                        print('  ALLELE: {} {}:[{}-{}) ref={} alt={}'.format(allele.record.id, allele.contig,
+                                                                             allele.start, allele.stop,
+                                                                             allele.alleles[0] or '-', allele.alleles[1] or '-'), file=sys.stderr)
+                        print(file=sys.stderr)
 
-                    print('  ALLELE: {} {}:[{}-{}) ref={} alt={}'.format(allele.record.id, allele.contig,
-                                                                         allele.start, allele.stop,
-                                                                         allele.alleles[0] or '-', allele.alleles[1] or '-'), file=sys.stderr)
-                    print(file=sys.stderr)
+                        for i, locus in enumerate(super_non_ref, 1):
+                            lref = locus.alleles[0] or '-'
+                            indices = locus.allele_indices
+                            if indices.count(None) == len(indices):
+                                geno = 'nocall'
+                            elif indices.count(0) == len(indices):
+                                geno = 'refcall'
+                            else:
+                                sep = '|' if locus.phased else '/'
+                                geno = sep.join(locus.alleles[a] or '-' if a is not None else '.' for a in indices)
+                            print('  VAR{:d}: {}[{:5d}-{:5d}) ref={} geno={}'.format(i, locus.contig, locus.start, locus.stop, lref, geno), file=sys.stderr)
 
-                    for i, locus in enumerate(super_trimmed, 1):
-                        lref = locus.alleles[0] or '-'
-                        indices = locus.allele_indices
-                        if indices.count(None) == len(indices):
-                            geno = 'nocall'
-                        elif indices.count(0) == len(indices):
-                            geno = 'refcall'
-                        else:
-                            sep = '|' if locus.phased else '/'
-                            geno = sep.join(locus.alleles[a] or '-' if a is not None else '.' for a in indices)
-                        print('  VAR{:d}: {}[{:5d}-{:5d}) ref={} geno={}'.format(i, locus.contig, locus.start, locus.stop, lref, geno), file=sys.stderr)
-                    print(file=sys.stderr)
+                    # Search superlocus for allele
+                    match_zygosity = find_allele(ref, allele, super_non_ref, debug=args.debug)
 
-                    match_zygosity = find_allele(ref, allele, super_trimmed, flanking_reference=args.flanking_reference, debug=args.debug)
+                    if args.debug:
+                        print(file=sys.stderr)
+                        print('    MATCH={}'.format(match_zygosity), file=sys.stderr)
+                        print(file=sys.stderr)
 
-                    print('    MATCH={}'.format(match_zygosity), file=sys.stderr)
-                    print(file=sys.stderr)
-
+                    # Annotate results of search
                     if match_zygosity is None:
                         suffix = '_NOCALL'
                     elif match_zygosity == 0:
@@ -114,27 +139,12 @@ def match_database(args):
                     else:
                         suffix = '_FOUND'
 
-                    for locus in super_all:
-                        times = match_zygosity if suffix == '_FOUND' else 1
+                    # Number of times to repeat the copied metadata
+                    times = match_zygosity if suffix == '_FOUND' else 1
 
-                        for name in info_meta:
-                            if name in allele.record.info:
-                                sname = name + suffix
-                                orig_value = locus.record.info.get(sname, ())
-                                new_value = allele.record.info[name]
-                                if not isinstance(new_value, tuple):
-                                    new_value = (new_value,)
-                                locus.record.info[sname] = orig_value + new_value*times
-
-                        sample = locus.record.samples[0]
-                        for name in format_meta:
-                            if name in allele.record.format:
-                                sname = name + suffix
-                                orig_value = sample.get(sname, ())
-                                new_value = allele.record.samples[0][name]
-                                if not isinstance(new_value, tuple):
-                                    new_value = (new_value,)
-                                sample[sname] = orig_value + new_value*times
+                    for locus in super_allele:
+                        annotate_info(locus, allele, info_meta, suffix, times)
+                        annotate_format(locus, allele, format_meta, suffix, times)
 
                 for locus in sorted(superlocus, key=NormalizedLocus.record_order_key):
                     out.write(locus.record)

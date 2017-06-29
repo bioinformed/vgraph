@@ -15,6 +15,8 @@
 ## under the License.
 
 
+import sys
+
 from itertools   import combinations, combinations_with_replacement
 from collections import defaultdict
 
@@ -217,7 +219,7 @@ def generate_paths(graph, feasible_paths=None, debug=False):
 
     for i,(start, stop, alleles) in enumerate(graph):
         if debug:
-            print('GRAPH: step={}, start={}, stop={}, alleles={}'.format(i+1, start, stop, alleles))
+            print('GRAPH: step={}, start={}, stop={}, alleles={}'.format(i+1, start, stop, alleles), file=sys.stderr)
 
         paths = extend_paths(paths, alleles)
 
@@ -227,16 +229,16 @@ def generate_paths(graph, feasible_paths=None, debug=False):
         if debug:
             paths = list(paths)
             for j,p in enumerate(paths):
-                print('     PATH{}: {}'.format(j+1, p))
-            print()
+                print('     PATH{}: {}'.format(j+1, p), file=sys.stderr)
+            print(file=sys.stderr)
 
     paths = list(tuple(p[:2]) for p in paths)
 
     if debug:
-        print('FINAL PATHS:')
+        print('FINAL PATHS:', file=sys.stderr)
         for j,p in enumerate(paths):
-            print('     PATH{}: {}'.format(j+1, p))
-        print()
+            print('     PATH{}: {}'.format(j+1, p), file=sys.stderr)
+        print(file=sys.stderr)
 
     return paths
 
@@ -332,22 +334,22 @@ def generate_genotypes(paths, zygosity_constraints, debug=False):
     genos = sorted(set(genos))
 
     if debug:
-        print('PATHS:')
+        print('PATHS:', file=sys.stderr)
         for i, (seq, path) in enumerate(paths, 1):
             assert len(path) == len(set(path))
-            print('{:4d}: {}'.format(i, seq))
-        print()
+            print('{:4d}: {}'.format(i, seq), file=sys.stderr)
+        print(file=sys.stderr)
 
-        print('POSSIBLE HAPLOTYPES:')
+        print('POSSIBLE HAPLOTYPES:', file=sys.stderr)
         for i, (seq, path) in enumerate(paths, 1):
             assert len(path) == len(set(path))
-            print('{:4d}: {}'.format(i, seq))
-        print()
+            print('{:4d}: {}'.format(i, seq), file=sys.stderr)
+        print(file=sys.stderr)
 
-        print('GENOTYPES:')
+        print('GENOTYPES:', file=sys.stderr)
 
         for i, (allele1, allele2) in enumerate(genos, 1):
-            print('{:4d}: {}/{}'.format(i, allele1, allele2))
-        print()
+            print('{:4d}: {}/{}'.format(i, allele1, allele2), file=sys.stderr)
+        print(file=sys.stderr)
 
     return genos

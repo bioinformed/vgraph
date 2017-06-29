@@ -218,33 +218,31 @@ def superlocus_equal(ref, start, stop, super1, super2, debug=False):
     return status
 
 
-def find_allele(ref, allele, superlocus, flanking_reference=2, debug=False):
+def find_allele(ref, allele, superlocus, debug=False):
+    # FASTPATH: Avoid constructing the graph match if the allele and the superlocus
+    #           match perfectly.
     if (len(superlocus) == 1 and allele.start == superlocus[0].start
                              and allele.stop  == superlocus[0].stop
                              and allele.alleles[1] in superlocus[0].alleles[1:]
                              and 'PASS' in superlocus[0].record.filter):
+
         i = superlocus[0].alleles.index(allele.alleles[1])
         z = superlocus[0].allele_indices.count(i)
-        assert z > 0
+
         return z
 
     # Bounds come from normalized extremes
     start, stop = get_superlocus_bounds([[allele], superlocus])
 
-    left_delta  = max(0, min(flanking_reference, allele.start - start))
-    right_delta = max(0, min(flanking_reference, stop - allele.stop))
-
-    assert left_delta >= 0
-    assert right_delta >= 0
-
     if debug:
         print('  Allele: start={}, stop={}, size={}, seq={}'.format(allele.start, allele.stop, allele.stop-allele.start, allele.alleles[1]), file=sys.stderr)
 
-    super_allele = ('*'*(allele.start-start-left_delta)
-                 + ref[allele.start-left_delta:allele.start]
-                 + allele.alleles[1]
-                 + ref[allele.stop:allele.stop+right_delta]
-                 + '*'*(stop-allele.stop-right_delta))
+    # Require reference matches within the wobble zone + padding built into each normalized allele
+    super_allele = ('*' * (allele.min_start - start)
+                 +  ref[allele.min_start:allele.start]
+                 +  allele.alleles[1]
+                 +  ref[allele.stop:allele.max_stop]
+                 +  '*' * (stop - allele.max_stop))
 
     super_allele = normalize_seq(super_allele)
 
@@ -269,22 +267,28 @@ def find_allele(ref, allele, superlocus, flanking_reference=2, debug=False):
             print(file=sys.stderr)
 
     except OverlapError:
+        return None
+
+    # Generate the set of diploid genotypes (actually haplotypes)
+    genos = set(generate_genotypes(paths, constraints, debug))
+
+    # Apply matcher to each pair of allele
+    matches = [(fancy_match(super_allele, a1), fancy_match(super_allele, a2))
+                         for a1, a2 in genos]
+
+    # Find the highest zygosity
+    z = max(((a1 or 0) + (a2 or 0)) for a1, a2 in matches)
+
+    # If no match, check for the presense of any nocalls
+    if not z and any(None in m for m in matches):
         z = None
 
-    else:
-        genos = set(generate_genotypes(paths, constraints, debug))
-        matches = [(fancy_match(super_allele, a1), fancy_match(super_allele, a2)) for a1, a2 in genos]
-        z = max(((a1 or 0) + (a2 or 0)) for a1,a2 in matches)
-
-        if not z and any(None in m for m in matches):
-            z = None
-
-        if debug:
-            print('   ALLELE:{} {}'.format(len(super_allele), super_allele), file=sys.stderr)
-            for i, (g, m) in enumerate(zip(genos, matches)):
-                print('   GENO{:02d}:{} {}'.format(i, tuple(map(len, g)),  g), file=sys.stderr)
-                print('  MATCH{:02d}: {}'.format(i, m), file=sys.stderr)
-            print(file=sys.stderr)
-            print('  ZYGOSITY: {}'.format(z), file=sys.stderr)
+    if debug:
+        print('   ALLELE:{} {}'.format(len(super_allele), super_allele), file=sys.stderr)
+        for i, (g, m) in enumerate(zip(genos, matches)):
+            print('   GENO{:02d}:{} {}'.format(i, tuple(map(len, g)),  g), file=sys.stderr)
+            print('  MATCH{:02d}: {}'.format(i, m), file=sys.stderr)
+        print(file=sys.stderr)
+        print('  ZYGOSITY: {}'.format(z), file=sys.stderr)
 
     return z

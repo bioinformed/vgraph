@@ -78,8 +78,6 @@ def arg_parser():
     dbmatch_parser.add_argument('--name', metavar='N', default=0, type=tryint,
                                  help='Name or index of sample in sample file (default=0)')
     dbmatch_parser.add_argument('-o', '--output', default='-', help='Sample VCF/BCF output')
-    dbmatch_parser.add_argument('--flanking-reference', metavar='N', type=int, default=2,
-                                help='Matches must have N bp of flanking reference (default=2)')
 
     add_common_args(dbmatch_parser)
 
