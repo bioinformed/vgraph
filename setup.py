@@ -26,7 +26,7 @@ from distutils.extension import Extension
 
 
 install_requires = ['Cython', 'pysam']
-setup_requires   = ['pytest-runner', 'pysam', 'setuptools_scm==1.15.0']
+setup_requires   = ['pytest-runner', 'pysam', 'setuptools_scm==1.15.0', 'setuptools_scm_git_archive==1.0']
 tests_require    = ['pytest', 'coverage']
 
 
