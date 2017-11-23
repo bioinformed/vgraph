@@ -25,9 +25,9 @@ from Cython.Distutils import build_ext
 from distutils.extension import Extension
 
 
-install_requires = ['Cython', 'pysam']
-setup_requires   = ['pytest-runner', 'pysam', 'setuptools_scm==1.15.0', 'setuptools_scm_git_archive==1.0']
-tests_require    = ['pytest', 'coverage']
+install_requires = ['pysam']
+setup_requires   = ['pysam', 'setuptools_scm==1.15.0', 'setuptools_scm_git_archive==1.0']
+tests_require    = ['pytest-runner', 'pytest', 'coverage']
 
 
 ext_modules = [
