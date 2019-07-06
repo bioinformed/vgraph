@@ -1,26 +1,25 @@
-# -*- coding: utf-8 -*-
+# Copyright 2015 Kevin B Jacobs
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License.  You may obtain
+# a copy of the License at
+#
+#        http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+# License for the specific language governing permissions and limitations
+# under the License.
 
-## Copyright 2015 Kevin B Jacobs
-##
-## Licensed under the Apache License, Version 2.0 (the "License"); you may
-## not use this file except in compliance with the License.  You may obtain
-## a copy of the License at
-##
-##        http://www.apache.org/licenses/LICENSE-2.0
-##
-## Unless required by applicable law or agreed to in writing, software
-## distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-## WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
-## License for the specific language governing permissions and limitations
-## under the License.
+"""Simple iterative graph traversal algorithms."""
 
-
-# Simple iterative graph traversal algorithms
 
 from collections import deque
 
 
 def dfs(graph, start):
+    """Depth first search."""
     stack = [iter([start])]
     seen = set()
     while stack:
@@ -34,6 +33,7 @@ def dfs(graph, start):
 
 
 def dfs_paths(graph, start):
+    """Depth first search yielding the path taken."""
     stack = [(iter([start]), [])]
     while stack:
         it, path = stack[-1]
@@ -49,6 +49,7 @@ def dfs_paths(graph, start):
 
 
 def bfs(graph, start):
+    """Breadth first search."""
     queue = deque([start])
     seen = {start}
     while queue:
@@ -59,6 +60,7 @@ def bfs(graph, start):
 
 
 def bfs_paths(graph, start):
+    """Breadth first search yielding the path taken."""
     queue = deque([[start]])
     while queue:
         path = queue.popleft()

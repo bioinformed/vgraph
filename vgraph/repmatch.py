@@ -1,19 +1,18 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+# Copyright 2015 Kevin B Jacobs
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License.  You may obtain
+# a copy of the License at
+#
+#        http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+# License for the specific language governing permissions and limitations
+# under the License.
 
-## Copyright 2015 Kevin B Jacobs
-##
-## Licensed under the Apache License, Version 2.0 (the "License"); you may
-## not use this file except in compliance with the License.  You may obtain
-## a copy of the License at
-##
-##        http://www.apache.org/licenses/LICENSE-2.0
-##
-## Unless required by applicable law or agreed to in writing, software
-## distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-## WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
-## License for the specific language governing permissions and limitations
-## under the License.
+"""Match a genome against another presumably identical genome (i.e. replicates)."""
 
 from os.path            import expanduser
 from operator           import attrgetter
@@ -27,12 +26,9 @@ from vgraph.match       import records_by_chromosome, get_superlocus_bounds, sup
 
 
 def match_replicates(args):
-    # Load FASTA reference
+    """Match a genome against another presumably identical genome (i.e. replicates)."""
     refs = Fastafile(expanduser(args.reference))
-
-    # Open input variant files
     in_vars = [VariantFile(var) for var in [args.vcf1, args.vcf2]]
-
     out_vars = [None, None]
 
     if args.out1:
@@ -45,7 +41,7 @@ def match_replicates(args):
         in_vars[1].header.formats.add('BK', '1', 'String', 'Sub-type for match decision (trivial: T, haplotype: H, error: N)')
         out_vars[1] = VariantFile(args.out2, 'w', header=in_vars[1].header)
 
-    match_status_map = {True : '=', False : 'X', None : '.'}
+    match_status_map = {True: '=', False: 'X', None: '.'}
 
     # Create parallel locus iterator by chromosome
     for chrom, ref, loci in records_by_chromosome(refs, in_vars, [args.name1, args.name2], args):
@@ -60,7 +56,7 @@ def match_replicates(args):
 
             super_start, super_stop = get_superlocus_bounds([super1, super2])
 
-            print('-'*80)
+            print('-' * 80)
             print('{}:[{:d}-{:d}):'.format(chrom, super_start, super_stop))
             print()
 

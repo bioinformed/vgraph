@@ -1,8 +1,11 @@
+"""Bounded cache with Least Recently Used (LRU) replacement policy."""
+
+
 from collections import OrderedDict
 
 
 class LRUCache:
-    """Bounded cache with Least Recently Used (LRU) replacement policy
+    """Bounded cache with Least Recently Used (LRU) replacement policy.
 
     Attrs:
         capacity (int): Cache capacity
@@ -23,6 +26,7 @@ class LRUCache:
 
     """
     def __init__(self, capacity):
+        """Build a new LRUCache."""
         self._capacity = capacity
         self.cache = OrderedDict()
 
@@ -50,7 +54,7 @@ class LRUCache:
             self.cache.move_to_end(key)
         else:
             if len(self.cache) >= self._capacity:
-                 self.cache.popitem(last=False)
+                self.cache.popitem(last=False)
             self.cache[key] = value
 
     def __delitem__(self, key):

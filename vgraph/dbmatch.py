@@ -1,21 +1,23 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+# Copyright 2015 Kevin B Jacobs
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License.  You may obtain
+# a copy of the License at
+#
+#        http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+# License for the specific language governing permissions and limitations
+# under the License.
 
-## Copyright 2015 Kevin B Jacobs
-##
-## Licensed under the Apache License, Version 2.0 (the "License"); you may
-## not use this file except in compliance with the License.  You may obtain
-## a copy of the License at
-##
-##        http://www.apache.org/licenses/LICENSE-2.0
-##
-## Unless required by applicable law or agreed to in writing, software
-## distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-## WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
-## License for the specific language governing permissions and limitations
-## under the License.
+"""Match a genome to a database of alleles."""
 
+import csv
 import sys
+
+from pathlib            import Path
 from os.path            import expanduser
 from operator           import attrgetter
 
@@ -28,6 +30,7 @@ from vgraph.match       import records_by_chromosome, get_superlocus_bounds, fin
 
 
 def annotate_info(locus, allele, info_meta, suffix, times):
+    """Annotate INFO in sample with fields from database."""
     for name in info_meta:
         if name in allele.record.info:
             sname = name + suffix
@@ -35,10 +38,11 @@ def annotate_info(locus, allele, info_meta, suffix, times):
             new_value = allele.record.info[name]
             if not isinstance(new_value, tuple):
                 new_value = (new_value,)
-            locus.record.info[sname] = orig_value + new_value*times
+            locus.record.info[sname] = orig_value + new_value * times
 
 
 def annotate_format(locus, allele, format_meta, suffix, times):
+    """Annotate FORMAT in sample with fields from database."""
     sample = locus.record.samples[0]
     for name in format_meta:
         if name in allele.record.format:
@@ -47,17 +51,76 @@ def annotate_format(locus, allele, format_meta, suffix, times):
             new_value = allele.record.samples[0][name]
             if not isinstance(new_value, tuple):
                 new_value = (new_value,)
-            sample[sname] = orig_value + new_value*times
+            sample[sname] = orig_value + new_value * times
 
 
-def match_database(args):
-    # Load FASTA reference
-    refs = Fastafile(expanduser(args.reference))
+def generate_superlocus_matches(chrom, superlocus, ref, alleles, debug=False):
+    """Generate allele matches for a superlocus."""
+    for allele in alleles:
+        super_allele = [locus for locus in superlocus if locus.extremes_intersect(allele)]
 
-    # Open input variant files
-    db = VariantFile(args.database)
-    sample = VariantFile(args.sample)
+        # Remove all reference calls from the superlocus.
+        # This is primarily done to remove long leading and trailing reference regions.
+        # Interstitial reference regions will be added back, based on how gaps are handled.
+        super_non_ref = [locus for locus in super_allele if not locus.is_ref()]
 
+        if debug:
+            super_start, super_stop = get_superlocus_bounds([[allele], super_non_ref])
+            print('-' * 80, file=sys.stderr)
+            print('{}:[{:d}-{:d}):'.format(chrom, super_start, super_stop), file=sys.stderr)
+            print(file=sys.stderr)
+
+            print('  ALLELE: {} {}:[{}-{}) ref={} alt={}'.format(
+                allele.record.id,
+                allele.contig,
+                allele.start,
+                allele.stop,
+                allele.alleles[0] or '-',
+                allele.alleles[1] or '-'
+            ), file=sys.stderr)
+            print(file=sys.stderr)
+
+            for i, locus in enumerate(super_non_ref, 1):
+                lref = locus.alleles[0] or '-'
+                indices = locus.allele_indices
+                if indices.count(None) == len(indices):
+                    geno = 'nocall'
+                elif indices.count(0) == len(indices):
+                    geno = 'refcall'
+                else:
+                    sep = '|' if locus.phased else '/'
+                    geno = sep.join(locus.alleles[a] or '-' if a is not None else '.' for a in indices)
+                print('  VAR{:d}: {}[{:5d}-{:5d}) ref={} geno={}'.format(i, locus.contig, locus.start, locus.stop, lref, geno), file=sys.stderr)
+
+        # Search superlocus for allele
+        match_zygosity = find_allele(ref, allele, super_non_ref, debug=debug)
+
+        if debug:
+            print(file=sys.stderr)
+            print('    MATCH={}'.format(match_zygosity), file=sys.stderr)
+            print(file=sys.stderr)
+
+        yield super_allele, allele, match_zygosity
+
+
+def generate_matches(refs, sample, db, args):
+    """Generate allele matches over all chromosomes."""
+    # Create parallel locus iterator by chromosome
+    for chrom, ref, loci in records_by_chromosome(refs, [sample, db], [args.name, None], args):
+        # Create superloci by taking the union of overlapping loci across all of the locus streams
+        loci = [sort_almost_sorted(l, key=NormalizedLocus.extreme_order_key) for l in loci]
+        superloci = union(loci, interval_func=attrgetter('min_start', 'max_stop'))
+
+        # Proceed by superlocus
+        for _, _, (superlocus, alleles) in superloci:
+            alleles.sort(key=NormalizedLocus.natural_order_key)
+            superlocus.sort(key=NormalizedLocus.natural_order_key)
+
+            yield superlocus, generate_superlocus_matches(chrom, superlocus, ref, alleles, args.debug)
+
+
+def build_new_metadata(db, sample):
+    """Build new metadata definitions for sample matches."""
     format_meta = []
     for fmt, meta in db.header.formats.items():
         if fmt not in sample.header.formats:
@@ -80,71 +143,80 @@ def match_database(args):
             sample.header.info.add(meta.name + '_NOCALL',   number='.', type=meta.type,
                                    description='Allele(s) with uncertain presense: ' + meta.description)
 
+    return format_meta, info_meta
+
+
+def match_database(args):
+    """Match a genome to a database of alleles."""
+    refs   = Fastafile(expanduser(args.reference))
+    db     = VariantFile(expanduser(args.database))
+    sample = VariantFile(expanduser(args.sample))
+
+    format_meta, info_meta = build_new_metadata(db, sample)
+
     with VariantFile(args.output, 'w', header=sample.header) as out:
-        # Create parallel locus iterator by chromosome
-        for chrom, ref, loci in records_by_chromosome(refs, [sample, db], [args.name, None], args):
-            # Create superloci by taking the union of overlapping loci across all of the locus streams
-            loci = [sort_almost_sorted(l, key=NormalizedLocus.extreme_order_key) for l in loci]
-            superloci = union(loci, interval_func=attrgetter('min_start', 'max_stop'))
+        for superlocus, matches in generate_matches(refs, sample, db, args):
+            for allele_locus, allele, match_zygosity in matches:
+                # Annotate results of search
+                if match_zygosity is None:
+                    suffix = '_NOCALL'
+                elif match_zygosity == 0:
+                    suffix = '_NOTFOUND'
+                else:
+                    suffix = '_FOUND'
 
-            # Proceed by superlocus
-            for _, _, (superlocus, alleles) in superloci:
-                alleles.sort(key=NormalizedLocus.natural_order_key)
-                superlocus.sort(key=NormalizedLocus.natural_order_key)
+                # Number of times to repeat the copied metadata
+                times = match_zygosity if suffix == '_FOUND' else 1
 
-                for allele in alleles:
-                    super_allele = [locus for locus in superlocus if locus.extremes_intersect(allele)]
+                for locus in allele_locus:
+                    annotate_info(locus, allele, info_meta, suffix, times)
+                    annotate_format(locus, allele, format_meta, suffix, times)
 
-                    # Remove all reference calls from the superlocus.
-                    # This is primarily done to remove long leading and trailing reference regions.
-                    # Interstitial reference regions will be added back, based on how gaps are handled.
-                    super_non_ref = [locus for locus in super_allele if not locus.is_ref()]
+            for locus in sorted(superlocus, key=NormalizedLocus.record_order_key):
+                out.write(locus.record)
 
-                    if args.debug:
-                        super_start, super_stop = get_superlocus_bounds([[allele], super_non_ref])
-                        print('-'*80, file=sys.stderr)
-                        print('{}:[{:d}-{:d}):'.format(chrom, super_start, super_stop), file=sys.stderr)
-                        print(file=sys.stderr)
 
-                        print('  ALLELE: {} {}:[{}-{}) ref={} alt={}'.format(allele.record.id, allele.contig,
-                                                                             allele.start, allele.stop,
-                                                                             allele.alleles[0] or '-', allele.alleles[1] or '-'), file=sys.stderr)
-                        print(file=sys.stderr)
+def match_database2(args):
+    """Match a genome to a database of alleles."""
+    refs   = Fastafile(expanduser(args.reference))
+    db     = VariantFile(expanduser(args.database))
+    sample = VariantFile(expanduser(args.sample))
+    sample_name = Path(args.sample).stem
 
-                        for i, locus in enumerate(super_non_ref, 1):
-                            lref = locus.alleles[0] or '-'
-                            indices = locus.allele_indices
-                            if indices.count(None) == len(indices):
-                                geno = 'nocall'
-                            elif indices.count(0) == len(indices):
-                                geno = 'refcall'
-                            else:
-                                sep = '|' if locus.phased else '/'
-                                geno = sep.join(locus.alleles[a] or '-' if a is not None else '.' for a in indices)
-                            print('  VAR{:d}: {}[{:5d}-{:5d}) ref={} geno={}'.format(i, locus.contig, locus.start, locus.stop, lref, geno), file=sys.stderr)
+    if not db.index:
+        raise ValueError('database file must be indexed')
+    if not sample.index:
+        raise ValueError('sample file must be indexed')
 
-                    # Search superlocus for allele
-                    match_zygosity = find_allele(ref, allele, super_non_ref, debug=args.debug)
+    # Open tabluar output file, if requested
+    table_writer = None
+    if args.table:
+        tablefile = open(args.table, 'w') if args.table != '-' else sys.stdout
+        table_writer = csv.writer(tablefile, delimiter='\t', lineterminator='\n')
+        table_writer.writerow(['SAMPLE_ID', 'VARIANT_ID', 'STATUS', 'ALLELE_COUNT'])
 
-                    if args.debug:
-                        print(file=sys.stderr)
-                        print('    MATCH={}'.format(match_zygosity), file=sys.stderr)
-                        print(file=sys.stderr)
+    sample.header.info.add('FOUND',    number='.', type='String', description='Allele(s) found')
+    sample.header.info.add('NOTFOUND', number='.', type='String', description='Allele(s) not found')
+    sample.header.info.add('NOCALL',   number='.', type='String', description='Allele(s) not called due to uncertainty')
 
-                    # Annotate results of search
-                    if match_zygosity is None:
-                        suffix = '_NOCALL'
-                    elif match_zygosity == 0:
-                        suffix = '_NOTFOUND'
-                    else:
-                        suffix = '_FOUND'
+    with VariantFile(args.output, 'w', header=sample.header) as out:
+        for superlocus, matches in generate_matches(refs, sample, db, args):
+            for allele_locus, allele, match_zygosity in matches:
+                # Annotate results of search
+                times = 1
+                if match_zygosity is None:
+                    status = 'NOCALL'
+                else:
+                    status = 'FOUND' if match_zygosity else 'NOTFOUND'
+                    times  = match_zygosity
 
-                    # Number of times to repeat the copied metadata
-                    times = match_zygosity if suffix == '_FOUND' else 1
+                var_id = allele.record.id
+                for locus in allele_locus:
+                    info = locus.record.info
+                    info[status] = info.get(status, ()) + (var_id, ) * times
 
-                    for locus in super_allele:
-                        annotate_info(locus, allele, info_meta, suffix, times)
-                        annotate_format(locus, allele, format_meta, suffix, times)
+                if table_writer:
+                    table_writer.writerow([sample_name, var_id, status, match_zygosity])
 
-                for locus in sorted(superlocus, key=NormalizedLocus.record_order_key):
-                    out.write(locus.record)
+            for locus in sorted(superlocus, key=NormalizedLocus.record_order_key):
+                out.write(locus.record)
