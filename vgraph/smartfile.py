@@ -1,7 +1,4 @@
-# -*- coding: utf-8 -*-
-
-
-"""Smarter file opener that understands compression"""
+"""Smarter file opener that understands compression."""
 
 import io
 import os
@@ -12,8 +9,7 @@ import pysam
 
 
 def spawn_compressor(exe, filename, mode, buffering=-1, encoding=None, errors=None, newline=None):
-    """
-    Spawn a subprocess to run a (de)compressor like gzip or bzip2.
+    """Spawn a subprocess to run a (de)compressor like gzip or bzip2.
 
     Args:
         exe (str): executable file name (must be fully qualified or found on the current PATH)
@@ -30,6 +26,7 @@ def spawn_compressor(exe, filename, mode, buffering=-1, encoding=None, errors=No
 
     Examples:
         spawn_compressor(exe, filename, mode, buffering=-1) -> input/output file object
+
     """
     if 'w' in mode:
         out = open(filename, mode)
@@ -50,8 +47,7 @@ COMPRESSED_SUFFIXES = {'gz': 'gzip', 'Z': 'gzip', 'bgz': 'gzip',
 
 
 def compressed_filename(filename):
-    """
-    Determine if the input file is in or needs to be in compressed format
+    """Determine if the input file is in or needs to be in compressed format.
 
     Args:
         filename (str or file object): file name or file object
@@ -70,6 +66,7 @@ def compressed_filename(filename):
         'gzip'
         >>> compressed_filename('../subjects.sdat.bz2')
         'bzip2'
+
     """
     if not isinstance(filename, str):
         return ''
@@ -80,11 +77,8 @@ def compressed_filename(filename):
     return COMPRESSED_SUFFIXES.get(ext, '')
 
 
-
 def smartfile(filename, mode='r', buffering=-1, encoding=None, errors=None, newline=None):
-    """
-    Return a file object in the correct compressed format as specified, which
-    is ready to read from or write to
+    """Return a file object in the correct compressed format as specified.
 
     Args:
         filename (str or file object): file name or file object
@@ -130,8 +124,3 @@ def smartfile(filename, mode='r', buffering=-1, encoding=None, errors=None, newl
         raise ValueError('Unknown compression scheme: %s' % comp)
 
     return f
-
-
-if __name__ == '__main__':  # pragma: no cover
-    import doctest
-    doctest.testmod()

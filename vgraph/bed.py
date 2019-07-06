@@ -1,18 +1,19 @@
-# -*- coding: utf-8 -*-
+# Copyright 2015 Kevin B Jacobs
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License.  You may obtain
+# a copy of the License at
+#
+#        http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+# License for the specific language governing permissions and limitations
+# under the License.
 
-## Copyright 2015 Kevin B Jacobs
-##
-## Licensed under the Apache License, Version 2.0 (the "License"); you may
-## not use this file except in compliance with the License.  You may obtain
-## a copy of the License at
-##
-##        http://www.apache.org/licenses/LICENSE-2.0
-##
-## Unless required by applicable law or agreed to in writing, software
-## distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-## WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
-## License for the specific language governing permissions and limitations
-## under the License.
+
+"""Simple class for working with records from BED files."""
 
 
 from collections import defaultdict
@@ -23,15 +24,13 @@ from .smartfile  import smartfile
 
 
 class BedRecord(object):
-    """
-    Simple class for working with records from BED files.
-    """
+    """Simple class for working with records from BED files."""
     __slots__ = ('contig', 'start', 'stop', 'name', 'score', 'strand', 'thick_start', 'thick_end', 'item_rgb')
     field_names = __slots__
 
     def __init__(self, contig, start, stop, name=None, score=None, strand=None, thick_start=None,
                  thick_end=None, item_rgb=None):
-
+        """Build a new BedRecord."""
         self.contig = contig
         self.start = start
         self.stop = stop
@@ -44,6 +43,7 @@ class BedRecord(object):
 
     @staticmethod
     def from_line(line):
+        """Build a BedRecord from a string."""
         line = line.rstrip()
         fields = line.split('\t')
         contig, start, stop = fields[0], int(fields[1]), int(fields[2])
@@ -60,31 +60,35 @@ class BedRecord(object):
         return BedRecord(contig, start, stop, name, score, strand, thick_start, thick_end, item_rgb)
 
     def to_tuple(self):
+        """Convert BedRecord to a tuple."""
         return (self.contig, self.start, self.stop, self.name, self.score,
                 self.strand, self.thick_start, self.thick_end, self.item_rgb)
 
     def to_line(self):
+        """Convert BedRecord to a BED line."""
         line = '\t'.join(str(f if f is not None else '') for f in self.to_tuple())
         return line.rstrip()
 
     def __repr__(self):
+        """Return the string representation of this BedRecord."""
         fields = ('%s=%r' % (k, v) for k, v in zip(self.field_names, self.to_tuple()) if v not in (None, ''))
         return 'BedRecord(%s)' % ', '.join(fields)
 
 
 class BedFile(object):
-    """
-    Simple class for iterating through the records of a BED file.
-    """
+    """Simple class for iterating through the records of a BED file."""
     def __init__(self, filename):
+        """Open a BedFile."""
         self.filename = filename
         self._tabix = None
 
     def __iter__(self):
+        """Iterate over rows of this BedFile."""
         return BedFile.parse_bed_lines(smartfile(self.filename))
 
     @property
     def tabix(self):
+        """Return a tabix index for this BedFile."""
         if self._tabix:
             return self._tabix
 
@@ -94,15 +98,18 @@ class BedFile(object):
         return self._tabix
 
     def query(self, contig=None, start=None, stop=None):
+        """Query the tabix index for this BedFile."""
         records = self.tabix.fetch(contig, start, stop)
         return BedFile.parse_bed_lines(records)
 
     @property
     def contigs(self):
+        """Return the contigs stored in this BedFile."""
         return self.tabix.contigs
 
     @staticmethod
     def parse_bed_lines(lines):
+        """Parse lines into BedRecords."""
         for line in lines:
             line = line.rstrip()
 
@@ -113,14 +120,15 @@ class BedFile(object):
 
 
 def load_bedmap(filename):
-    '''Load BED file as a dictionary mapping contig to list of BedRecords
+    """Load BED file as a dictionary mapping contig to list of BedRecords.
 
     Args:
         filename (str): input filename
 
     Returns:
         dict: dictionary mapping contig to list of BedRecords
-    '''
+
+    """
     bed = sorted(BedFile(filename), key=attrgetter('contig', 'start', 'stop'))
 
     bedmap = defaultdict(list)

@@ -397,7 +397,10 @@ class NormalizedLocus(object):
             self.phased = sample.phased
         else:
             self.phased = False
-            self.allele_indices = (0, 1)
+            if record.alts:
+                self.allele_indices = (0, 1)
+            else:
+                self.allele_indices = (0,)
 
         geno_alleles = (record.alleles[0],) + tuple(a for i, a in enumerate(record.alleles[1:], 1) if i in self.allele_indices)
         self.allele_indices = tuple(geno_alleles.index(record.alleles[i]) if i is not None else None for i in self.allele_indices)

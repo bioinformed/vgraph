@@ -1,3 +1,6 @@
+"""Read data from a pysam.Fastafile using lazy queries and a block-level LRU cache."""
+
+
 from vgraph.lru_cache import LRUCache
 
 
@@ -12,6 +15,7 @@ class LazyFastaContig:
 
     """
     def __init__(self, fasta, contig, block_size=10240, cache_size=64):
+        """Build a new LazyFastaContig."""
         self.fasta = fasta
         self.contig = contig
         self.reference_length = fasta.get_reference_length(contig)
@@ -19,10 +23,11 @@ class LazyFastaContig:
         self.cache = LRUCache(cache_size)
 
     def __len__(self):
+        """Return the contig length."""
         return self.reference_length
 
     def __getitem__(self, index):
-        """Retrieve a slice of the FASTA sequence
+        """Retrieve a slice of the FASTA sequence.
 
         Args:
             index (int or slice): position or slice to retrieve
@@ -32,7 +37,7 @@ class LazyFastaContig:
 
         """
         if isinstance(index, int):
-            index = slice(index, index+1)
+            index = slice(index, index + 1)
         elif not isinstance(index, slice):
             raise TypeError('int or slice required')
 
@@ -91,7 +96,7 @@ class LazyFastaContig:
 
         Args:
             block_index (int): block index correspding to FASTA index from
-                               ``block_index*block_size`` to ``(block_index+1)*block_size.
+                               `block_index*block_size` to `(block_index+1)*block_size.`
 
         Returns:
             str: FASTA sequence for block of length block_size.
