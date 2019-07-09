@@ -121,7 +121,7 @@ def filter_records(records, name, args):
 def records_by_chromosome(refs, varfiles, names, args, get_all=False):
     """Group variant records by chromosome."""
     contigs_all   = unique_everseen(chain.from_iterable(all_contigs(var) for var in varfiles))
-    contigs_seen  = {chain.from_iterable(informative_contigs(var) for var in varfiles)}
+    contigs_seen  = set(chain.from_iterable(informative_contigs(var) for var in varfiles))
     contigs_fetch = [contig for contig in contigs_all if contig in contigs_seen]
 
     if args.include_regions is not None:
