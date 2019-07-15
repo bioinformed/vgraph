@@ -17,7 +17,6 @@
 import csv
 import sys
 
-from pathlib            import Path
 from os.path            import expanduser
 from operator           import attrgetter
 
@@ -105,13 +104,11 @@ def generate_superlocus_matches(chrom, superlocus, ref, alleles, debug=False):
 
 def generate_matches(refs, sample, db, args):
     """Generate allele matches over all chromosomes."""
-    # Create parallel locus iterator by chromosome
     for chrom, ref, loci in records_by_chromosome(refs, [sample, db], [args.name, None], args):
         # Create superloci by taking the union of overlapping loci across all of the locus streams
         loci = [sort_almost_sorted(l, key=NormalizedLocus.extreme_order_key) for l in loci]
         superloci = union(loci, interval_func=attrgetter('min_start', 'max_stop'))
 
-        # Proceed by superlocus
         for _, _, (superlocus, alleles) in superloci:
             alleles.sort(key=NormalizedLocus.natural_order_key)
             superlocus.sort(key=NormalizedLocus.natural_order_key)
@@ -181,7 +178,11 @@ def match_database2(args):
     refs   = Fastafile(expanduser(args.reference))
     db     = VariantFile(expanduser(args.database))
     sample = VariantFile(expanduser(args.sample))
-    sample_name = Path(args.sample).stem
+
+    try:
+        sample_name = sample.header.samples[args.name]
+    except TypeError:
+        sample_name = args.name
 
     if not db.index:
         raise ValueError('database file must be indexed')
