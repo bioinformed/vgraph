@@ -184,9 +184,9 @@ def match_database2(args):
     except TypeError:
         sample_name = args.name
 
-    if not db.index:
+    if db.index is None:
         raise ValueError('database file must be indexed')
-    if not sample.index:
+    if sample.index is None:
         raise ValueError('sample file must be indexed')
 
     # Open tabluar output file, if requested
