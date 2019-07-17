@@ -58,7 +58,7 @@ def all_contigs(varfiles):
 
     """
     contigs = list(varfiles.header.contigs)
-    if varfiles.index:
+    if varfiles.index is not None:
         contigs.extend(varfiles.index)
     return unique_everseen(contigs)
 
@@ -73,7 +73,7 @@ def informative_contigs(varfile):
         All contigs that have data
 
     """
-    if not varfile.index:
+    if varfile.index is None:
         raise ValueError('Variant file requires index')
     return (contig for contig in varfile.index if not is_empty_iter(varfile.fetch(contig)))
 
