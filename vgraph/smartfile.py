@@ -14,10 +14,8 @@ def spawn_compressor(exe, filename, mode, buffering=-1, encoding=None, errors=No
     Args:
         exe (str): executable file name (must be fully qualified or found on the current PATH)
         filename (str or file object): file name or file object
-        mode (str): determine whether the file objects should be opened for input or output,
-                      either 'w' or 'r'
-        buffering (int): buffering mode and size.  0=unbuffered, 1=linebuffered, >1 buffer size,
-                      -1 default buffering (default)
+        mode (str): determine whether the file objects should be opened for input or output, either 'w' or 'r'
+        buffering (int): buffering mode and size.  0=unbuffered, 1=linebuffered, >1 buffer size, -1 default buffering
         encoding: encoding method.  Default='utf-8'
         errors: how encoding and decoding errors should be handled.  Default=None (See:https://docs.python.org/3/library/functions.html#open)
 
@@ -82,10 +80,8 @@ def smartfile(filename, mode='r', buffering=-1, encoding=None, errors=None, newl
 
     Args:
         filename (str or file object): file name or file object
-        mode (str): determine whether the file objects should be opened for reading or writing,
-                      either 'w' or 'r'.  Default='r'
-        buffering (int): buffering mode and size.  0=unbuffered, 1=linebuffered, >1 buffer size,
-                      -1 default buffering (default)
+        mode (str): determine whether the file objects should be opened for reading or writing, either 'w' or 'r'.  Default='r'
+        buffering (int): buffering mode and size.  0=unbuffered, 1=linebuffered, >1 buffer size, -1 default buffering (default)
 
     Returns:
         file object to read from or write to

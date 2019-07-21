@@ -25,21 +25,40 @@ from vgraph.iterstuff   import sort_almost_sorted
 from vgraph.match       import records_by_chromosome, get_superlocus_bounds, superlocus_equal
 
 
-def match_replicates(args):
-    """Match a genome against another presumably identical genome (i.e. replicates)."""
-    refs = Fastafile(expanduser(args.reference))
-    in_vars = [VariantFile(var) for var in [args.vcf1, args.vcf2]]
+def make_outputs(in_vars, out1, out2):
+    """Make output files."""
     out_vars = [None, None]
 
-    if args.out1:
+    if out1:
         in_vars[0].header.formats.add('BD', '1', 'String', 'Match decision for call (match: =, mismatch: X, error: N)')
         in_vars[0].header.formats.add('BK', '1', 'String', 'Sub-type for match decision (trivial: T, haplotype: H, error: N)')
-        out_vars[0] = VariantFile(args.out1, 'w', header=in_vars[0].header)
+        out_vars[0] = VariantFile(out1, 'w', header=in_vars[0].header)
 
-    if args.out2:
+    if out2:
         in_vars[1].header.formats.add('BD', '1', 'String', 'Match decision for call (match: =, mismatch: X, error: N)')
         in_vars[1].header.formats.add('BK', '1', 'String', 'Sub-type for match decision (trivial: T, haplotype: H, error: N)')
-        out_vars[1] = VariantFile(args.out2, 'w', header=in_vars[1].header)
+        out_vars[1] = VariantFile(out2, 'w', header=in_vars[1].header)
+
+    return out_vars
+
+
+def write_match(out, superlocus, name, match_status, match_type):
+    """Write match to output file."""
+    if not out:
+        return
+
+    for locus in sorted(superlocus, key=NormalizedLocus.record_order_key):
+        sample       = locus.record.samples[name]
+        sample['BD'] = match_status
+        sample['BK'] = match_type
+        out.write(locus.record)
+
+
+def match_replicates(args):
+    """Match a genome against another presumably identical genome (i.e. replicates)."""
+    refs     = Fastafile(expanduser(args.reference))
+    in_vars  = [VariantFile(var) for var in [args.vcf1, args.vcf2]]
+    out_vars = make_outputs(in_vars, args.out1, args.out2)
 
     match_status_map = {True: '=', False: 'X', None: '.'}
 
@@ -77,19 +96,8 @@ def match_replicates(args):
             print('    MATCH={} TYPE={}'.format(match_status, match_type))
             print()
 
-            # The hard work is done.  The rest is just output and formatting...
-
-            if out_vars[0]:
-                for locus in sorted(super1, key=NormalizedLocus.record_order_key):
-                    locus.record.samples[args.name1]['BD'] = match_status
-                    locus.record.samples[args.name1]['BK'] = match_type
-                    out_vars[0].write(locus.record)
-
-            if out_vars[1]:
-                for locus in sorted(super2, key=NormalizedLocus.record_order_key):
-                    locus.record.samples[args.name2]['BD'] = match_status
-                    locus.record.samples[args.name2]['BK'] = match_type
-                    out_vars[1].write(locus.record)
+            write_match(out_vars[0], super1, args.name1, match_status, match_type)
+            write_match(out_vars[1], super2, args.name2, match_status, match_type)
 
             for i, superlocus in enumerate([super1, super2], 1):
                 for locus in superlocus:

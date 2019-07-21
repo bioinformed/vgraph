@@ -143,6 +143,18 @@ def build_new_metadata(db, sample):
     return format_meta, info_meta
 
 
+def translate_match(match_zygosity):
+    """Translate match to STATUS and TIMES."""
+    status, times = 'NOTFOUND', 1
+    if match_zygosity is None:
+        status = 'NOCALL'
+    elif match_zygosity:
+        status = 'FOUND'
+        times  = match_zygosity
+
+    return status, times
+
+
 def match_database(args):
     """Match a genome to a database of alleles."""
     refs   = Fastafile(expanduser(args.reference))
@@ -155,15 +167,8 @@ def match_database(args):
         for superlocus, matches in generate_matches(refs, sample, db, args):
             for allele_locus, allele, match_zygosity in matches:
                 # Annotate results of search
-                if match_zygosity is None:
-                    suffix = '_NOCALL'
-                elif match_zygosity == 0:
-                    suffix = '_NOTFOUND'
-                else:
-                    suffix = '_FOUND'
-
-                # Number of times to repeat the copied metadata
-                times = match_zygosity if suffix == '_FOUND' else 1
+                status, times = translate_match(match_zygosity)
+                suffix = '_' + status
 
                 for locus in allele_locus:
                     annotate_info(locus, allele, info_meta, suffix, times)
@@ -171,6 +176,28 @@ def match_database(args):
 
             for locus in sorted(superlocus, key=NormalizedLocus.record_order_key):
                 out.write(locus.record)
+
+
+def update_info_header(header):
+    """Add match INFO fields VCF header for dbmatch2."""
+    info_header = header.info
+    if 'FOUND' not in info_header:
+        info_header.add('FOUND',    number='.', type='String', description='Allele(s) found')
+    if 'NOTFOUND' not in info_header:
+        info_header.add('NOTFOUND', number='.', type='String', description='Allele(s) not found')
+    if 'NOCALL' not in info_header:
+        info_header.add('NOCALL',   number='.', type='String', description='Allele(s) not called due to uncertainty')
+
+
+def write_table_row(out, sample_name, var_id, superlocus, status, match_zygosity):
+    """Write a match row for the tabular output of dbmatch2."""
+    if not out:
+        return
+
+    gts = [locus.record.samples[sample_name] for locus in superlocus]
+    dp  = min(gt.get('MIN_DP', 0) or gt.get('DP', 0) for gt in gts) if gts else ''
+
+    out.writerow([sample_name, var_id, status, match_zygosity, dp])
 
 
 def match_database2(args):
@@ -190,34 +217,27 @@ def match_database2(args):
         raise ValueError('sample file must be indexed')
 
     # Open tabluar output file, if requested
-    table_writer = None
+    table = None
     if args.table:
         tablefile = open(args.table, 'w') if args.table != '-' else sys.stdout
-        table_writer = csv.writer(tablefile, delimiter='\t', lineterminator='\n')
-        table_writer.writerow(['SAMPLE_ID', 'VARIANT_ID', 'STATUS', 'ALLELE_COUNT'])
+        table = csv.writer(tablefile, delimiter='\t', lineterminator='\n')
+        table.writerow(['SAMPLE_ID', 'VARIANT_ID', 'STATUS', 'ALLELE_COUNT', 'MIN_COVERAGE_DEPTH'])
 
-    sample.header.info.add('FOUND',    number='.', type='String', description='Allele(s) found')
-    sample.header.info.add('NOTFOUND', number='.', type='String', description='Allele(s) not found')
-    sample.header.info.add('NOCALL',   number='.', type='String', description='Allele(s) not called due to uncertainty')
+    update_info_header(sample.header)
 
     with VariantFile(args.output, 'w', header=sample.header) as out:
         for superlocus, matches in generate_matches(refs, sample, db, args):
             for allele_locus, allele, match_zygosity in matches:
-                # Annotate results of search
-                times = 1
-                if match_zygosity is None:
-                    status = 'NOCALL'
-                else:
-                    status = 'FOUND' if match_zygosity else 'NOTFOUND'
-                    times  = match_zygosity
+                dbvar  = allele.record
+                var_id = dbvar.id or f'{dbvar.chrom}_{dbvar.start+1}_{dbvar.stop}_{dbvar.alts[0]}'
 
-                var_id = allele.record.id
+                status, times = translate_match(match_zygosity)
+
                 for locus in allele_locus:
                     info = locus.record.info
                     info[status] = info.get(status, ()) + (var_id, ) * times
 
-                if table_writer:
-                    table_writer.writerow([sample_name, var_id, status, match_zygosity])
+                write_table_row(table, sample_name, var_id, allele_locus, status, match_zygosity)
 
             for locus in sorted(superlocus, key=NormalizedLocus.record_order_key):
                 out.write(locus.record)

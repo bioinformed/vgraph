@@ -110,7 +110,9 @@ def grouper(iterable, n, fillvalue=None):
 
 
 def roundrobin(*iterables):
-    """roundrobin('ABC', 'D', 'EF') --> A D E B F C.
+    """Pick sequential elements from each supplied iterator.
+
+    roundrobin('ABC', 'D', 'EF') --> A D E B F C.
 
     Recipe credited to George Sakkis
 
@@ -127,13 +129,21 @@ def roundrobin(*iterables):
 
 
 def roundrobin2(*iterables):
-    """roundrobin('ABC', 'D', 'EF') --> A D E B F C."""
+    """Pick sequential elements from each supplied iterator.
+
+    roundrobin2('ABC', 'D', 'EF') --> A D E B F C.
+
+    """
     sentinel = object()
     return (x for x in chain(*zip_longest(fillvalue=sentinel, *iterables)) if x is not sentinel)
 
 
 def powerset(iterable):
-    """powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)."""
+    """Compute the powerset of elements in iterable.
+
+    powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3).
+
+    """
     s = list(iterable)
     return chain.from_iterable(combinations(s, r) for r in range(len(s) + 1))
 
@@ -331,7 +341,7 @@ def _zip_exact_check(rest):
 
 
 def zip_exact(*iterables):
-    r"""zip_exact(iter1 [,iter2 [...]]) --> iterator object.
+    r"""Zip iterables thaat must be of exactly the same length.
 
     Return an iterator whose .next() method returns a tuple where the i-th
     element comes from the i-th iterable argument.  The .next() method
@@ -420,7 +430,7 @@ class OrderError(ValueError):
 
 
 def sort_almost_sorted(iterable, key=None, windowsize=1000, stable=True):
-    """sort_almost_sorted(iterable, key=None, windowsize=1000, stable=True).
+    """Sort an iterable allowing misordered keys within windowsize of their true location.
 
     Sorts an almost sorted iterable of items provided that all misordered
     items are within windowsize elements of the correct location in the final
@@ -569,7 +579,7 @@ def ensure_ordered(iterable, key=None):
 
 
 def ensure_unique_everseen(iterable, key=None):
-    """ensure_unique_everseen(iterable, key=None) -> iterable.
+    """Yield all elements of iterable, raising an error if any are repeated.
 
     Returns a generator that yields all elements of iterable, provided that
     the elements are unique based on hashability and equality.  Otherwise a
