@@ -194,10 +194,11 @@ def write_table_row(out, sample_name, var_id, superlocus, status, match_zygosity
     if not out:
         return
 
-    gts = [locus.record.samples[sample_name] for locus in superlocus]
-    dp  = min(gt.get('MIN_DP', 0) or gt.get('DP', 0) for gt in gts) if gts else ''
+    gts  = [locus.record.samples[sample_name] for locus in superlocus]
+    dp   = min(gt.get('MIN_DP', 0) or gt.get('DP', 0) for gt in gts) if gts else ''
+    qual = min(gt.get('GQ', 0) for gt in gts) if gts else ''
 
-    out.writerow([sample_name, var_id, status, match_zygosity, dp])
+    out.writerow([sample_name, var_id, status, match_zygosity, dp, qual])
 
 
 def match_database2(args):
@@ -221,7 +222,7 @@ def match_database2(args):
     if args.table:
         tablefile = open(args.table, 'w') if args.table != '-' else sys.stdout
         table = csv.writer(tablefile, delimiter='\t', lineterminator='\n')
-        table.writerow(['SAMPLE_ID', 'VARIANT_ID', 'STATUS', 'ALLELE_COUNT', 'MIN_COVERAGE_DEPTH'])
+        table.writerow(['SAMPLE_ID', 'VARIANT_ID', 'STATUS', 'ALLELE_COUNT', 'MIN_COVERAGE_DEPTH', 'CALL_QUALITY'])
 
     update_info_header(sample.header)
 
