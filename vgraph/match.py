@@ -15,6 +15,9 @@
 """Utilities to perform variant graph matching."""
 
 import sys
+
+from collections        import Counter
+from dataclasses        import dataclass
 from itertools          import chain
 
 from vgraph.bed         import load_bedmap
@@ -22,7 +25,18 @@ from vgraph.norm        import NormalizedLocus, fancy_match, normalize_seq, Refe
 from vgraph.intervals   import union
 from vgraph.iterstuff   import sort_almost_sorted, is_empty_iter, unique_everseen
 from vgraph.lazy_fasta  import LazyFastaContig
-from vgraph.linearmatch import generate_graph, generate_paths, generate_genotypes, intersect_paths, OverlapError
+from vgraph.linearmatch import generate_graph, generate_paths, generate_genotypes_with_paths, generate_genotypes, intersect_paths, OverlapError
+
+
+@dataclass(frozen=True)
+class AlleleMatch:
+    """Dataclass for allele matching results."""
+    allele_ploidy: int
+    allele_depth:  int
+    ref_ploidy:    int
+    ref_depth:     int
+    other_ploidy:  int
+    other_depth:   int
 
 
 def valid_alleles(alleles):
@@ -41,8 +55,7 @@ def records_to_loci(ref, records, name, variant_padding):
     """Convert variant records to NormalizedLocus records."""
     for recnum, record in enumerate(records):
         try:
-            if len(record.alleles) > 1:
-                yield NormalizedLocus(recnum, record, ref, name, variant_padding)
+            yield NormalizedLocus(recnum, record, ref, name, variant_padding)
         except ReferenceMismatch:
             print('Reference mismatch: {}:{}-{}'.format(record.contig, record.start, record.stop))
 
@@ -234,21 +247,56 @@ def superlocus_equal(ref, start, stop, super1, super2, debug=False):
     return status
 
 
-def find_allele(ref, allele, superlocus, debug=False):
+def find_allele_exact_match(ref, allele, superlocus):
+    """Search for allele using a fast exact match criteria."""
+    for locus in superlocus:
+        a  = allele.left
+        ll = locus.left
+
+        if (
+            a.start == ll.start
+            and a.stop  == ll.stop
+            and a.alleles[1] in ll.alleles[1:]
+            and 'PASS' in locus.record.filter
+        ):
+            index    = locus.alleles.index(a.alleles[1])
+            zygosity = locus.allele_indices.count(index)
+
+            return zygosity
+
+    return 0
+
+
+def path_allele_counts(paths):
+    """Count number ploidy of each allele at each node in paths."""
+    for ps in zip(*paths):
+        yield Counter(p.index for p in ps if p.locus)
+
+
+def path_to_ads(path, counts):
+    """Convert a path through a variant graph into a sequence of allele depths."""
+    for p, c in zip(path, counts):
+        if not p.locus:
+            continue
+        record = p.locus.record
+        sample = record.samples[0]
+        dp     = sample['AD'][p.index] if 'AD' in sample else sample.get('MIN_DP', 0)
+        yield dp / c[p.index]
+
+
+nothing = object()
+
+
+def int_mean(items, default=nothing):
+    """Take the rounded mean of a sequence of items."""
+    n = len(items)
+    if not n and default is not nothing:
+        return default
+    return round(sum(items) / n)
+
+
+def find_allele(ref, allele, superlocus, debug=False):  # noqa: C901
     """Check for the presence of an allele within a superlocus."""
-    # FASTPATH: Avoid constructing the graph match if the allele and the superlocus
-    #           match perfectly.
-    if (len(superlocus) == 1
-            and allele.start == superlocus[0].start
-            and allele.stop == superlocus[0].stop
-            and allele.alleles[1] in superlocus[0].alleles[1:]
-            and 'PASS' in superlocus[0].record.filter):
-
-        i = superlocus[0].alleles.index(allele.alleles[1])
-        z = superlocus[0].allele_indices.count(i)
-
-        return z
-
     # Bounds come from normalized extremes
     start, stop = get_superlocus_bounds([[allele], superlocus])
 
@@ -261,30 +309,35 @@ def find_allele(ref, allele, superlocus, debug=False):
         ), file=sys.stderr)
 
     # Require reference matches within the wobble zone + padding built into each normalized allele
-    super_allele = ('*' * (allele.min_start - start)
-                 +  ref[allele.min_start:allele.start]
-                 +  allele.alleles[1]
-                 +  ref[allele.stop:allele.max_stop]
-                 +  '*' * (stop - allele.max_stop))
+    super_allele = normalize_seq(
+        '*' * (allele.min_start - start)
+        + ref[allele.min_start:allele.start]
+        + allele.alleles[1]
+        + ref[allele.stop:allele.max_stop]
+        + '*' * (stop - allele.max_stop)
+    )
 
-    super_allele = normalize_seq(super_allele)
+    super_ref = normalize_seq(
+        '*' * (allele.min_start - start)
+        + ref[allele.min_start:allele.max_stop]
+        + '*' * (stop - allele.max_stop)
+    )
 
     assert len(super_allele) == stop - start - len(allele.alleles[0]) + len(allele.alleles[1])
 
     # Create genotype sets for each superlocus
     try:
         graph, constraints = generate_graph(ref, start, stop, superlocus, debug)
-        graph = list(graph)
 
         if debug:
+            graph = list(graph)
             for i, (start, stop, alleles) in enumerate(graph):
                 print('  GRAPH{:02d}: start={}, stop={}, alleles={}'.format(i, start, stop, alleles), file=sys.stderr)
             print(file=sys.stderr)
 
-        paths = generate_paths(graph, debug=debug)
+        paths = list(generate_paths(graph, debug=debug))
 
         if debug:
-            paths = list(paths)
             for i, p in enumerate(paths):
                 print('  PATH{:02d}: {}'.format(i, p), file=sys.stderr)
             print(file=sys.stderr)
@@ -293,18 +346,53 @@ def find_allele(ref, allele, superlocus, debug=False):
         return None
 
     # Generate the set of diploid genotypes (actually haplotypes)
-    genos = set(generate_genotypes(paths, constraints, debug))
+    ploidy = max(len(locus.allele_indices) for locus in superlocus) if superlocus else 2
+    genos  = list(generate_genotypes_with_paths(paths, constraints, ploidy))
+
+    # superlocus contains impossible genotypes and no paths are valid
+    if not genos:
+        return 0
 
     # Apply matcher to each pair of allele
-    matches = [(fancy_match(super_allele, a1), fancy_match(super_allele, a2))
-            for a1, a2 in genos]
+    matches = (
+        (
+            [fancy_match(super_allele, seq) for (seq, _) in geno],
+            geno,
+        ) for geno in genos
+    )
 
-    # Find the highest zygosity
-    z = max(((a1 or 0) + (a2 or 0)) for a1, a2 in matches)
+    zygosity, nocalls, _, geno, matches = max(
+        (
+            sum(m or 0 for m in matches),
+            -matches.count(None),
+            i,
+            geno,
+            matches,
+        ) for i, (matches, geno) in enumerate(matches)
+    )
 
-    # If no match, check for the presense of any nocalls
-    if not z and any(None in m for m in matches):
-        z = None
+    if not zygosity and nocalls:
+        return None
+
+    seqs, nodes   = zip(*geno)
+    allele_counts = list(path_allele_counts(nodes))
+    allele_depths = [list(path_to_ads(p, allele_counts)) for p in nodes]
+
+    found, ref, other = [], [], []
+    for m, seq, ad in zip(matches, seqs, allele_depths):
+        if m:
+            found.append(ad)
+        elif fancy_match(super_ref, seq):
+            ref.append(ad)
+        else:
+            other.append(ad)
+
+    ref_ploidy    = len(ref)
+    allele_ploidy = len(found)
+    other_ploidy  = len(other)
+    allele_ad     = int_mean([sum(p) for p in zip(*found)], 0)
+    ref_ad        = int_mean([sum(p) for p in zip(*ref)],   0)
+    other_ad      = int_mean([sum(p) for p in zip(*other)], 0)
 
     if debug:
         print('   ALLELE:{} {}'.format(len(super_allele), super_allele), file=sys.stderr)
@@ -312,6 +400,8 @@ def find_allele(ref, allele, superlocus, debug=False):
             print('   GENO{:02d}:{} {}'.format(i, tuple(map(len, g)),  g), file=sys.stderr)
             print('  MATCH{:02d}: {}'.format(i, m), file=sys.stderr)
         print(file=sys.stderr)
-        print('  ZYGOSITY: {}'.format(z), file=sys.stderr)
+        print(f'ALLELE: id={allele.record.id}, allele_ploidy={allele_ploidy}, ref_ploidy={ref_ploidy}, other_ploidy={other_ploidy}, ploidy={ploidy}',
+              file=sys.stderr)
+        print('  ZYGOSITY: {}'.format(zygosity), file=sys.stderr)
 
-    return z
+    return AlleleMatch(allele_ploidy, allele_ad, ref_ploidy, ref_ad, other_ploidy, other_ad)
