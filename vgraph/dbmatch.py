@@ -214,16 +214,24 @@ def write_table_row(out, sample_name, var_id, superlocus, status, match):
     gts  = [locus.record.samples[sample_name] for locus in superlocus]
     qual = min(gt.get('GQ', 0) for gt in gts) if gts else ''
 
-    out.writerow([
+    row = [
         sample_name,
         var_id,
         status,
         qual,
-        match.allele_ploidy, match.ref_ploidy, match.other_ploidy,
-        match.allele_depth if match.allele_ploidy else 'NOT_CALLED',
-        match.ref_depth    if match.ref_ploidy    else 'NOT_CALLED',
-        match.other_depth  if match.other_ploidy  else 'NOT_CALLED',
-    ])
+    ]
+
+    if match:
+        row += [
+            match.allele_ploidy, match.ref_ploidy, match.other_ploidy,
+            match.allele_depth if match.allele_ploidy else 'NOT_CALLED',
+            match.ref_depth    if match.ref_ploidy    else 'NOT_CALLED',
+            match.other_depth  if match.other_ploidy  else 'NOT_CALLED',
+        ]
+    else:
+        row += ['NO_CALL'] * 6
+
+    out.writerow(row)
 
 
 def match_database2(args):
