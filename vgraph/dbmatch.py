@@ -92,14 +92,15 @@ def generate_superlocus_matches(chrom, superlocus, ref, alleles, debug=False):
                 print('  VAR{:d}: {}[{:5d}-{:5d}) ref={} geno={}'.format(i, locus.contig, locus.start, locus.stop, lref, geno), file=sys.stderr)
 
         # Search superlocus for allele
-        match_zygosity = find_allele(ref, allele, super_non_ref, debug=debug)
+        # match = find_allele(ref, allele, super_non_ref, debug=debug)
+        match = find_allele(ref, allele, super_allele, debug=debug)
 
         if debug:
             print(file=sys.stderr)
-            print('    MATCH={}'.format(match_zygosity), file=sys.stderr)
+            print('    MATCH={}'.format(match), file=sys.stderr)
             print(file=sys.stderr)
 
-        yield super_allele, allele, match_zygosity
+        yield super_allele, allele, match
 
 
 def generate_matches(refs, sample, db, args):
@@ -143,14 +144,14 @@ def build_new_metadata(db, sample):
     return format_meta, info_meta
 
 
-def translate_match(match_zygosity):
+def translate_match(match):
     """Translate match to STATUS and TIMES."""
     status, times = 'NOTFOUND', 1
-    if match_zygosity is None:
+    if match is None:
         status = 'NOCALL'
-    elif match_zygosity:
+    elif match.allele_ploidy:
         status = 'FOUND'
-        times  = match_zygosity
+        times  = match.allele_ploidy
 
     return status, times
 
@@ -165,9 +166,9 @@ def match_database(args):
 
     with VariantFile(args.output, 'w', header=sample.header) as out:
         for superlocus, matches in generate_matches(refs, sample, db, args):
-            for allele_locus, allele, match_zygosity in matches:
+            for allele_locus, allele, match in matches:
                 # Annotate results of search
-                status, times = translate_match(match_zygosity)
+                status, times = translate_match(match)
                 suffix = '_' + status
 
                 for locus in allele_locus:
@@ -189,16 +190,38 @@ def update_info_header(header):
         info_header.add('NOCALL',   number='.', type='String', description='Allele(s) not called due to uncertainty')
 
 
-def write_table_row(out, sample_name, var_id, superlocus, status, match_zygosity):
+def write_table_header(out):
+    """Write a match header for the tabular output of dbmatch2."""
+    out.writerow([
+        'SAMPLE_ID',
+        'ALLELE_ID',
+        'STATUS',
+        'CALL_QUALITY',
+        'ALLELE_PLOIDY',
+        'REFERENCE_PLOIDY',
+        'OTHER_PLOIDY',
+        'ALLELE_READS',
+        'REFERENCE_READS',
+        'OTHER_READS',
+    ])
+
+
+def write_table_row(out, sample_name, var_id, superlocus, status, match):
     """Write a match row for the tabular output of dbmatch2."""
     if not out:
         return
 
     gts  = [locus.record.samples[sample_name] for locus in superlocus]
-    dp   = min(gt.get('MIN_DP', 0) or gt.get('DP', 0) for gt in gts) if gts else ''
     qual = min(gt.get('GQ', 0) for gt in gts) if gts else ''
 
-    out.writerow([sample_name, var_id, status, match_zygosity, dp, qual])
+    out.writerow([
+        sample_name,
+        var_id,
+        status,
+        qual,
+        match.allele_ploidy, match.ref_ploidy, match.other_ploidy,
+        match.allele_depth,  match.ref_depth,  match.other_depth,
+    ])
 
 
 def match_database2(args):
@@ -222,23 +245,23 @@ def match_database2(args):
     if args.table:
         tablefile = open(args.table, 'w') if args.table != '-' else sys.stdout
         table = csv.writer(tablefile, delimiter='\t', lineterminator='\n')
-        table.writerow(['SAMPLE_ID', 'VARIANT_ID', 'STATUS', 'ALLELE_COUNT', 'MIN_COVERAGE_DEPTH', 'CALL_QUALITY'])
+        write_table_header(table)
 
     update_info_header(sample.header)
 
     with VariantFile(args.output, 'w', header=sample.header) as out:
         for superlocus, matches in generate_matches(refs, sample, db, args):
-            for allele_locus, allele, match_zygosity in matches:
+            for allele_locus, allele, match in matches:
                 dbvar  = allele.record
                 var_id = dbvar.id or f'{dbvar.chrom}_{dbvar.start+1}_{dbvar.stop}_{dbvar.alts[0]}'
 
-                status, times = translate_match(match_zygosity)
+                status, times = translate_match(match)
 
                 for locus in allele_locus:
                     info = locus.record.info
                     info[status] = info.get(status, ()) + (var_id, ) * times
 
-                write_table_row(table, sample_name, var_id, allele_locus, status, match_zygosity)
+                write_table_row(table, sample_name, var_id, allele_locus, status, match)
 
             for locus in sorted(superlocus, key=NormalizedLocus.record_order_key):
                 out.write(locus.record)
