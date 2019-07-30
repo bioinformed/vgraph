@@ -220,7 +220,9 @@ def write_table_row(out, sample_name, var_id, superlocus, status, match):
         status,
         qual,
         match.allele_ploidy, match.ref_ploidy, match.other_ploidy,
-        match.allele_depth,  match.ref_depth,  match.other_depth,
+        match.allele_depth if match.allele_ploidy else 'NOT_CALLED',
+        match.ref_depth    if match.ref_ploidy    else 'NOT_CALLED',
+        match.other_depth  if match.other_ploidy  else 'NOT_CALLED',
     ])
 
 
