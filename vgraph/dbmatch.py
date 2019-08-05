@@ -227,6 +227,7 @@ def write_table_row(out, sample_name, var_id, superlocus, status, match):
             match.allele_depth if match.allele_depth is not None else 'NOT_CALLED',
             match.ref_depth,   # ref allele depth should always be reported if records are present
             match.other_depth  if match.other_depth  is not None else 'NOT_CALLED',
+
         ]
     else:
         row += ['NO_CALL'] * 6
