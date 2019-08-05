@@ -92,8 +92,8 @@ def generate_superlocus_matches(chrom, superlocus, ref, alleles, debug=False):
                 print('  VAR{:d}: {}[{:5d}-{:5d}) ref={} geno={}'.format(i, locus.contig, locus.start, locus.stop, lref, geno), file=sys.stderr)
 
         # Search superlocus for allele
-        # match = find_allele(ref, allele, super_non_ref, debug=debug)
-        match = find_allele(ref, allele, super_allele, debug=debug)
+        match = find_allele(ref, allele, super_non_ref, debug=debug)
+        # match = find_allele(ref, allele, super_allele, debug=debug)
 
         if debug:
             print(file=sys.stderr)
@@ -224,9 +224,10 @@ def write_table_row(out, sample_name, var_id, superlocus, status, match):
     if match:
         row += [
             match.allele_ploidy, match.ref_ploidy, match.other_ploidy,
-            match.allele_depth if match.allele_ploidy else 'NOT_CALLED',
-            match.ref_depth    if match.ref_ploidy    else 'NOT_CALLED',
-            match.other_depth  if match.other_ploidy  else 'NOT_CALLED',
+            match.allele_depth if match.allele_depth is not None else 'NOT_CALLED',
+            match.ref_depth,   # ref allele depth should always be reported if records are present
+            match.other_depth  if match.other_depth  is not None else 'NOT_CALLED',
+
         ]
     else:
         row += ['NO_CALL'] * 6

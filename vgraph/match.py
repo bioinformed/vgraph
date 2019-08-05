@@ -19,6 +19,7 @@ import sys
 from collections        import Counter
 from dataclasses        import dataclass
 from itertools          import chain
+from typing             import Optional
 
 from vgraph.bed         import load_bedmap
 from vgraph.norm        import NormalizedLocus, fancy_match, normalize_seq, ReferenceMismatch
@@ -34,9 +35,9 @@ class AlleleMatch:
     allele_ploidy: int
     allele_depth:  int
     ref_ploidy:    int
-    ref_depth:     int
-    other_ploidy:  int
-    other_depth:   int
+    ref_depth:     Optional[int]
+    other_ploidy:  Optional[int]
+    other_depth:   Optional[int]
 
 
 def valid_alleles(alleles):
@@ -390,9 +391,9 @@ def find_allele(ref, allele, superlocus, debug=False):  # noqa: C901
     ref_ploidy    = len(ref)
     allele_ploidy = len(found)
     other_ploidy  = len(other)
-    allele_ad     = int_mean([sum(p) for p in zip(*found)], 0)
-    ref_ad        = int_mean([sum(p) for p in zip(*ref)],   0)
-    other_ad      = int_mean([sum(p) for p in zip(*other)], 0)
+    allele_ad     = int_mean([sum(p) for p in zip(*found)], None)
+    ref_ad        = int_mean([sum(p) for p in zip(*ref)],   None)
+    other_ad      = int_mean([sum(p) for p in zip(*other)], None)
 
     if debug:
         print('   ALLELE:{} {}'.format(len(super_allele), super_allele), file=sys.stderr)
