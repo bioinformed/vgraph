@@ -403,6 +403,11 @@ class NormalizedLocus(object):
 
         if name is not None:
             sample         = record.samples[name]
+
+            if 'PGT' in sample:
+                sample['GT'] = tuple(map(int, sample['PGT'].split('|')))
+                sample.phased = True
+
             allele_indices = sample.allele_indices
             self.phased    = sample.phased
         else:
