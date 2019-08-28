@@ -20,8 +20,8 @@ from setuptools import setup, find_packages
 from Cython.Distutils import build_ext
 from distutils.extension import Extension
 
-if sys.version_info < (3, 4):
-    sys.exit('Sorry, Python 3.4 or newer is required to install and run vgraph')
+if sys.version_info < (3, 7):
+    sys.exit('Sorry, Python 3.7 or newer is required to install and run vgraph')
 
 install_requires = ['pysam']
 setup_requires   = ['pysam', 'setuptools_scm==1.15.0', 'setuptools_scm_git_archive==1.0']

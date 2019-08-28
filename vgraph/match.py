@@ -296,7 +296,7 @@ def int_mean(items, default=nothing):
     return round(sum(items) / n)
 
 
-def find_allele(ref, allele, superlocus, debug=False):  # noqa: C901
+def find_allele(ref, allele, superlocus, mode='sensitive', debug=False):  # noqa: C901
     """Check for the presence of an allele within a superlocus."""
     # Bounds come from normalized extremes
     start, stop = get_superlocus_bounds([[allele], superlocus])
@@ -310,19 +310,30 @@ def find_allele(ref, allele, superlocus, debug=False):  # noqa: C901
         ), file=sys.stderr)
 
     # Require reference matches within the wobble zone + padding built into each normalized allele
-    super_allele = normalize_seq(
-        '*' * (allele.min_start - start)
-        + ref[allele.min_start:allele.start]
-        + allele.alleles[1]
-        + ref[allele.stop:allele.max_stop]
-        + '*' * (stop - allele.max_stop)
-    )
+    if mode == 'specific':
+        super_allele = normalize_seq(ref[start:allele.start] + allele.alleles[1] + ref[allele.stop:stop])
+        super_ref    = normalize_seq(ref[start:stop])
+    elif mode == 'sensitive':
+        super_allele = normalize_seq(
+            '*' * (allele.min_start - start)
+            + ref[allele.min_start:allele.start]
+            + allele.alleles[1]
+            + ref[allele.stop:allele.max_stop]
+            + '*' * (stop - allele.max_stop)
+        )
 
-    super_ref = normalize_seq(
-        '*' * (allele.min_start - start)
-        + ref[allele.min_start:allele.max_stop]
-        + '*' * (stop - allele.max_stop)
-    )
+        super_ref = normalize_seq(
+            '*' * (allele.min_start - start)
+            + ref[allele.min_start:allele.max_stop]
+            + '*' * (stop - allele.max_stop)
+        )
+    else:
+        raise ValueError('invalid match mode specified: {}'.format(mode))
+
+    if debug:
+        print('                MODE:', mode, file=sys.stderr)
+        print('        SUPER ALLELE:', super_allele, file=sys.stderr)
+        print('        SUPER REF:   ', super_ref, file=sys.stderr)
 
     assert len(super_allele) == stop - start - len(allele.alleles[0]) + len(allele.alleles[1])
 

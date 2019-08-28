@@ -31,8 +31,8 @@ class PathItem:
     """Object representing a step in a traversal path through a variant graph."""
     seq:           str
     nodes:         List['Allele']
-    phasesets:     Set[int]
-    antiphasesets: Set[int]
+    phasesets:     Set[str]
+    antiphasesets: Set[str]
 
 
 EMPTY_PATH = PathItem('', [], set(), set())
@@ -227,17 +227,22 @@ def _make_alleles(ref, locus, zygosity_constraints):
         yield NocallAllele(locus.start, locus.stop)
         return
 
-    index_set = set(indices)
-    alleles   = locus.alleles
-    phased    = locus.phased
-    het       = len(index_set) > 1
+    index_set   = set(indices)
+    alleles     = locus.alleles
+    phased      = locus.phased
+    phase_group = locus.phase_group
+    het         = len(index_set) > 1
 
     for i in index_set:
         # Alt allele at phased, heterozygous locus
         if i and phased and het:
             # each alt allele is distinct
-            for phasename in (j for j, idx in enumerate(indices) if i == idx):
-                allele = HetAltAllele(locus, i, locus.start, locus.stop, alleles[i], phasename)
+            for allele_phase in (j for j, idx in enumerate(indices) if i == idx):
+                if phase_group:
+                    phase = '{}/{}'.format(phase_group, allele_phase)
+                else:
+                    phase = str(allele_phase)
+                allele = HetAltAllele(locus, i, locus.start, locus.stop, alleles[i], phase)
                 zygosity_constraints[allele] = 1
                 yield allele
 
