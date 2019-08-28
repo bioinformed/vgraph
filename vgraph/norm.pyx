@@ -109,7 +109,7 @@ cpdef fancy_match(str s1, str s2):
     return True
 
 
-cpdef trim_common_suffixes(strs, int max_trim=0):
+cpdef trim_common_suffixes(strs, int max_trim=-1):
     """trim common suffixes
 
     >>> trim_common_suffixes([])
@@ -130,7 +130,7 @@ cpdef trim_common_suffixes(strs, int max_trim=0):
     (9, ['', '', '', ''])
 
     """
-    if len(strs) <= 1:
+    if len(strs) <= 1 or not max_trim:
         return 0, strs
 
     cdef int i, trim = 0
@@ -145,8 +145,8 @@ cpdef trim_common_suffixes(strs, int max_trim=0):
 
     while n0 >= 0 and n1 >= 0 and s0[n0] == s1[n1]:
         trim += 1
-        n0 -= 1
-        n1 -= 1
+        n0   -= 1
+        n1   -= 1
 
     for s in strs[2:]:
         str1 = s.encode()
@@ -162,7 +162,7 @@ cpdef trim_common_suffixes(strs, int max_trim=0):
         if i < trim:
             trim = i
 
-    if 0 < max_trim < trim:
+    if trim > max_trim > 0:
         trim = max_trim
 
     if trim > 0:
@@ -171,7 +171,7 @@ cpdef trim_common_suffixes(strs, int max_trim=0):
     return trim, strs
 
 
-cpdef trim_common_prefixes(strs, int max_trim=0):
+cpdef trim_common_prefixes(strs, int max_trim=-1):
     """trim common prefixes
 
     >>> trim_common_prefixes([])
@@ -192,7 +192,7 @@ cpdef trim_common_prefixes(strs, int max_trim=0):
     (9, ['', '', '', ''])
 
     """
-    if len(strs) <= 1:
+    if len(strs) <= 1 or not max_trim:
         return 0, strs
 
     cdef int i, trim = 0
@@ -214,7 +214,7 @@ cpdef trim_common_prefixes(strs, int max_trim=0):
         if i < trim:
             trim = i
 
-    if 0 < max_trim < trim:
+    if trim > max_trim > 0:
         trim = max_trim
 
     if trim > 0:
@@ -276,18 +276,39 @@ cdef shuffle_right(ref, int *start, int *stop, alleles, int bound, int ref_step)
     return alleles
 
 
-cpdef normalize_alleles(ref, int start, int stop, alleles, int bound=-1, int ref_step=24, left=True, bint shuffle=True):
-    if left:
+cpdef normalize_alleles(
+    ref,
+    int start,
+    int stop, alleles,
+    int bound=-1,
+    int max_left_trim=-1,
+    int max_right_trim=-1,
+    int ref_step=24,
+    str shuffle='left',
+):
+    if not shuffle or shuffle == 'left':
         if bound < 0:
             bound = 0
-        return normalize_alleles_left(ref, start, stop, alleles, bound, ref_step, shuffle)
-    else:
+        return _normalize_alleles_left(ref, start, stop, alleles, bound, max_left_trim, max_right_trim, ref_step, shuffle == 'left')
+    elif shuffle == 'right':
         if bound < 0:
             bound = len(ref)
-        return normalize_alleles_right(ref, start, stop, alleles, bound, ref_step, shuffle)
+        return _normalize_alleles_right(ref, start, stop, alleles, bound, max_left_trim, max_right_trim, ref_step, True)
+    else:
+        raise ValueError('Unknown shuffle mode: {}'.format(shuffle))
 
 
-cdef normalize_alleles_left(ref, int start, int stop, alleles, int bound, int ref_step=24, bint shuffle=True):
+cdef _normalize_alleles_left(
+    ref,
+    int start,
+    int stop,
+    alleles,
+    int bound,
+    int max_left_trim=-1,
+    int max_right_trim=-1,
+    int ref_step=24,
+    bint shuffle=True,
+):
     """Normalize loci by removing extraneous reference padding"""
     cdef int trimmed
 
@@ -299,17 +320,18 @@ cdef normalize_alleles_left(ref, int start, int stop, alleles, int bound, int re
     if len(alleles) < 2:
         return NormalizedAlleles(start, stop, alleles)
 
-    # STEP 0: Trim prefixes if needed to clear bound
-    if start < bound:
-        trimmed, alleles = trim_common_prefixes(alleles, max_trim=bound - start)
-        start += trimmed
+    # STEP 0: Trim VCF padding or prefixes if needed to clear bound
+    if max_left_trim:
+        trimmed, alleles = trim_common_prefixes(alleles, max_trim=max(1, bound - start))
+        start           += trimmed
+        max_left_trim   -= trimmed
 
     # STEP 1: Trim common suffix
-    trimmed, alleles = trim_common_suffixes(alleles)
+    trimmed, alleles = trim_common_suffixes(alleles, max_trim=max_right_trim)
     stop -= trimmed
 
     # STEP 2: Trim common prefix
-    trimmed, alleles = trim_common_prefixes(alleles)
+    trimmed, alleles = trim_common_prefixes(alleles, max_trim=max_left_trim)
     start += trimmed
 
     # STEP 3: Force shuffle right if start doesn't clear bound
@@ -326,7 +348,17 @@ cdef normalize_alleles_left(ref, int start, int stop, alleles, int bound, int re
     return NormalizedAlleles(start, stop, tuple(alleles))
 
 
-cdef normalize_alleles_right(ref, int start, int stop, alleles, int bound, int ref_step=24, bint shuffle=True):
+cdef _normalize_alleles_right(
+    ref,
+    int start,
+    int stop,
+    alleles,
+    int bound,
+    int max_left_trim=-1,
+    int max_right_trim=-1,
+    int ref_step=24,
+    bint shuffle=True
+):
     """Normalize loci by removing extraneous reference padding"""
     cdef int trimmed, chrom_stop = len(ref)
 
@@ -341,14 +373,15 @@ cdef normalize_alleles_right(ref, int start, int stop, alleles, int bound, int r
     # STEP 0: Trim suffixes if needed to clear bound
     if stop > bound:
         trimmed, alleles = trim_common_suffixes(alleles, max_trim=stop - bound)
-        stop -= trimmed
+        stop            -= trimmed
+        max_right_trim  -= trimmed
 
     # STEP 1: Trim common prefix
-    trimmed, alleles = trim_common_prefixes(alleles)
+    trimmed, alleles = trim_common_prefixes(alleles, max_trim=max_left_trim)
     start += trimmed
 
     # STEP 2: Trim common suffix
-    trimmed, alleles = trim_common_suffixes(alleles)
+    trimmed, alleles = trim_common_suffixes(alleles, max_trim=max_right_trim)
     stop -= trimmed
 
     # STEP 3: Force shuffle left if stop doesn't clear bound
@@ -384,9 +417,15 @@ def suffixes(s):
 class NormalizedLocus(object):
     """Normalization data for a single VCF record and genotype"""
     __slots__ = ('recnum', 'record', 'contig', 'start', 'stop', 'alleles', 'allele_indices',
-                 'phased', 'min_start', 'max_stop', 'left', 'right')
+                 'phased', 'phase_group', 'min_start', 'max_stop', 'left', 'right')
 
-    def __init__(self, recnum, record, ref, name=None, variant_padding=0):
+    def __init__(self,
+        recnum,
+        record,
+        ref,
+        name=None,
+        variant_padding=0,
+    ):
         self.recnum = recnum
         self.record = record
         self.contig = record.contig
@@ -401,17 +440,22 @@ class NormalizedLocus(object):
         # Ensure ref allele is fully expanded (since gVCF truncates it)
         self.alleles = (refa,) + tuple(normalize_seq(a) for a in record.alleles[1:])
 
+        self.phased = False
+        self.phase_group = None
+
         if name is not None:
-            sample         = record.samples[name]
+            sample = record.samples[name]
 
             if 'PGT' in sample:
                 sample['GT'] = tuple(map(int, sample['PGT'].split('|')))
                 sample.phased = True
 
+                if 'PID' in sample:
+                    self.phase_group = sample['PID']
+
             allele_indices = sample.allele_indices
-            self.phased    = sample.phased
+            self.phased = sample.phased
         else:
-            self.phased = False
             if record.alts:
                 allele_indices = (0, 1)
             else:
@@ -431,30 +475,49 @@ class NormalizedLocus(object):
             self.max_stop  = record.stop
             return
 
-        self.start, self.stop, self.alleles = normalize_alleles(ref, record.start, record.stop, self.alleles, shuffle=False)
+        self.start, self.stop, self.alleles = normalize_alleles(
+            ref,
+            record.start,
+            record.stop,
+            self.alleles,
+            shuffle=None,
+            max_left_trim=1,
+            max_right_trim=0,
+        )
+
         start, stop, alleles = self.start, self.stop, self.alleles
         refa, alts = alleles[0], alleles[1:]
 
         # Left shuffle locus with all alt alleles considered simultaneously
-        self.left = normalize_alleles(ref, start, stop, alleles, left=True)
+        self.left = normalize_alleles(ref, start, stop, alleles, shuffle='left')
 
         # Right shuffle locus with all alt alleles considered simultaneously
-        self.right = normalize_alleles(ref, start, stop, alleles, left=False)
+        self.right = normalize_alleles(ref, start, stop, alleles, shuffle='right')
+
+        # Handle phase blocks of the form: 1:71660636_AG_A
+        if self.phase_group:
+            phase_block_start = int(self.phase_group.split('_')[0]) - 1
+        else:
+            phase_block_start = start
 
         # Minimum start and stop coordinates over each alt allele
         # n.b. may be broader than with all alleles or with bounds
-        lefts = [[self.left.start],
-                 (normalize_alleles(ref, start, stop,           (refa, alt),    left=True).start for alt in alts if refa),
-                 (normalize_alleles(ref, start, start + len(r), (r,    ''),     left=True).start for r in prefixes(refa) if r),
-                 (normalize_alleles(ref, start, start,          ('',   prealt), left=True).start for alt in alts for prealt in prefixes(alt) if prealt)]
+        lefts = [
+            [self.left.start, phase_block_start],
+            (normalize_alleles(ref, start, stop,           (refa, alt),    shuffle='left').start for alt in alts if refa),
+            (normalize_alleles(ref, start, start + len(r), (r,    ''),     shuffle='left').start for r in prefixes(refa) if r),
+            (normalize_alleles(ref, start, start,          ('',   prealt), shuffle='left').start for alt in alts for prealt in prefixes(alt) if prealt)
+        ]
 
-        rights = [[self.right.stop],
-                  (normalize_alleles(ref, start,         stop, (refa, alt),    left=False).stop for alt in alts if refa),
-                  (normalize_alleles(ref, stop - len(r), stop, (r,    ''),     left=False).stop for r in suffixes(refa) if r),
-                  (normalize_alleles(ref, stop,          stop, ('',   sufalt), left=False).stop for alt in alts for sufalt in suffixes(alt) if sufalt)]
+        rights = [
+            [self.right.stop],
+            (normalize_alleles(ref, start,         stop, (refa, alt),    shuffle='right').stop for alt in alts if refa),
+            (normalize_alleles(ref, stop - len(r), stop, (r,    ''),     shuffle='right').stop for r in suffixes(refa) if r),
+            (normalize_alleles(ref, stop,          stop, ('',   sufalt), shuffle='right').stop for alt in alts for sufalt in suffixes(alt) if sufalt)
+        ]
 
         self.min_start = max(0, min(chain.from_iterable(lefts)) - variant_padding)
-        self.max_stop  = max(chain.from_iterable(rights)) + variant_padding
+        self.max_stop  = max(chain.from_iterable(rights))       + variant_padding
 
     def extreme_order_key(self):
         return self.min_start, self.max_stop

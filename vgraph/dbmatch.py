@@ -53,7 +53,7 @@ def annotate_format(locus, allele, format_meta, suffix, times):
             sample[sname] = orig_value + new_value * times
 
 
-def generate_superlocus_matches(chrom, superlocus, ref, alleles, debug=False):
+def generate_superlocus_matches(chrom, superlocus, ref, alleles, mode, debug=False):
     """Generate allele matches for a superlocus."""
     for allele in alleles:
         super_allele = [locus for locus in superlocus if locus.extremes_intersect(allele)]
@@ -92,7 +92,7 @@ def generate_superlocus_matches(chrom, superlocus, ref, alleles, debug=False):
                 print('  VAR{:d}: {}[{:5d}-{:5d}) ref={} geno={}'.format(i, locus.contig, locus.start, locus.stop, lref, geno), file=sys.stderr)
 
         # Search superlocus for allele
-        match = find_allele(ref, allele, super_non_ref, debug=debug)
+        match = find_allele(ref, allele, super_non_ref, mode=mode, debug=debug)
         # match = find_allele(ref, allele, super_allele, debug=debug)
 
         if debug:
@@ -114,7 +114,7 @@ def generate_matches(refs, sample, db, args):
             alleles.sort(key=NormalizedLocus.natural_order_key)
             superlocus.sort(key=NormalizedLocus.natural_order_key)
 
-            yield superlocus, generate_superlocus_matches(chrom, superlocus, ref, alleles, args.debug)
+            yield superlocus, generate_superlocus_matches(chrom, superlocus, ref, alleles, args.mode, args.debug)
 
 
 def build_new_metadata(db, sample):

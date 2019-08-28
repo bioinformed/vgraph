@@ -111,6 +111,8 @@ def arg_parser():
     dbmatch_parser = subparsers.add_parser('dbmatch', help='compare a database of alleles to a sample')
     dbmatch_parser.add_argument('database', help='Database of alleles VCF/BCF input (- for stdin)')
     dbmatch_parser.add_argument('sample',   help='Sample VCF/BCF input (- for stdin)')
+    dbmatch_parser.add_argument('--mode', choices=['sensitive', 'specific'], default='sensitive',
+                                help='Modify allele matching to maximize sensitivity or specificity (default=sensitive).')
     dbmatch_parser.add_argument('--name', metavar='N', default=0, type=tryint, help='Name or index of sample in sample file (default=0)')
     dbmatch_parser.add_argument('-o', '--output', default='-', help='VCF/BCF output')
 
@@ -120,6 +122,8 @@ def arg_parser():
     dbmatch2_parser = subparsers.add_parser('dbmatch2', help='compare a database of alleles to a sample')
     dbmatch2_parser.add_argument('database', help='Database of alleles VCF/BCF input (- for stdin)')
     dbmatch2_parser.add_argument('sample',   help='Sample VCF/BCF input (- for stdin)')
+    dbmatch2_parser.add_argument('--mode', choices=['sensitive', 'specific'], default='sensitive',
+                                 help='Modify allele matching to maximize sensitivity or specificity (default=sensitive).')
     dbmatch2_parser.add_argument('--name', metavar='N', default=0, type=tryint,
                                  help='Name or index of sample in sample file (default=0)')
     dbmatch2_parser.add_argument('-o', '--output', default='-', help='VCF/BCF output')
