@@ -281,7 +281,7 @@ def path_to_ads(path, counts):
             continue
         record = p.locus.record
         sample = record.samples[0]
-        dp     = sample['AD'][p.index] if 'AD' in sample else sample.get('MIN_DP', 0)
+        dp     = sample['AD'][p.index] if 'AD' in sample and p.index is not None else sample.get('MIN_DP', 0)
         yield dp / c[p.index]
 
 
