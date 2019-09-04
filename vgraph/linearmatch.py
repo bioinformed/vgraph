@@ -120,7 +120,7 @@ class HomAltAllele(Allele):
 
 class NocallAllele(Allele):
     """Graph node for a no-call haplotype."""
-    __slots__ = ('start', 'stop')
+    __slots__ = ('locus', 'start', 'stop')
     phase = None
     index = None
 
@@ -224,7 +224,7 @@ def _make_alleles(ref, locus, zygosity_constraints):
     indices = locus.allele_indices
 
     if None in indices or 'PASS' not in locus.record.filter:
-        yield NocallAllele(locus.start, locus.stop)
+        yield NocallAllele(locus, locus.start, locus.stop)
         return
 
     index_set   = set(indices)
