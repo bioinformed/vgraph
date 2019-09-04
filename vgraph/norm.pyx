@@ -449,6 +449,7 @@ class NormalizedLocus(object):
             if 'PGT' in sample:
                 sample['GT'] = tuple(map(int, sample['PGT'].split('|')))
                 sample.phased = True
+                del record.format['PGT']
 
                 if 'PID' in sample:
                     self.phase_group = sample['PID']
@@ -494,16 +495,10 @@ class NormalizedLocus(object):
         # Right shuffle locus with all alt alleles considered simultaneously
         self.right = normalize_alleles(ref, start, stop, alleles, shuffle='right')
 
-        # Handle phase blocks of the form: 1:71660636_AG_A
-        if self.phase_group:
-            phase_block_start = int(self.phase_group.split('_')[0]) - 1
-        else:
-            phase_block_start = start
-
         # Minimum start and stop coordinates over each alt allele
         # n.b. may be broader than with all alleles or with bounds
         lefts = [
-            [self.left.start, phase_block_start],
+            [self.left.start],
             (normalize_alleles(ref, start, stop,           (refa, alt),    shuffle='left').start for alt in alts if refa),
             (normalize_alleles(ref, start, start + len(r), (r,    ''),     shuffle='left').start for r in prefixes(refa) if r),
             (normalize_alleles(ref, start, start,          ('',   prealt), shuffle='left').start for alt in alts for prealt in prefixes(alt) if prealt)
