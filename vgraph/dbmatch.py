@@ -190,6 +190,15 @@ def update_info_header(header):
         info_header.add('NOCALL',   number='.', type='String', description='Allele(s) not called due to uncertainty')
 
 
+def clear_info_fields(loci):
+    """Clear INFO fields, if present, prior to setting them."""
+    for locus in loci:
+        info = locus.record.info
+        for status in ('FOUND', 'NOTFOUND', 'NOCALL'):
+            if status in info:
+                del info[status]
+
+
 def write_table_header(out):
     """Write a match header for the tabular output of dbmatch2."""
     out.writerow([
@@ -262,6 +271,8 @@ def match_database2(args):
 
     with VariantFile(args.output, 'w', header=sample.header) as out:
         for superlocus, matches in generate_matches(refs, sample, db, args):
+            clear_info_fields(superlocus)
+
             for allele_locus, allele, match in matches:
                 dbvar  = allele.record
                 var_id = dbvar.id or f'{dbvar.chrom}_{dbvar.start+1}_{dbvar.stop}_{dbvar.alts[0]}'
