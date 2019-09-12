@@ -53,13 +53,6 @@ def annotate_format(locus, allele, format_meta, suffix, times):
             sample[sname] = orig_value + new_value * times
 
 
-def match_sort_key(match):
-    """Return number of matching alleles to order matches."""
-    if not match:
-        return 0
-    return match.allele_ploidy
-
-
 def generate_superlocus_matches(chrom, superlocus, ref, alleles, mode, debug=False):
     """Generate allele matches for a superlocus."""
     for allele in alleles:
@@ -99,6 +92,11 @@ def generate_superlocus_matches(chrom, superlocus, ref, alleles, mode, debug=Fal
                 print('  VAR{:d}: {}[{:5d}-{:5d}) ref={} geno={}'.format(i, locus.contig, locus.start, locus.stop, lref, geno), file=sys.stderr)
 
         match = find_allele(ref, allele, super_non_ref, mode=mode, debug=debug)
+
+        if debug:
+            print(file=sys.stderr)
+            print('    MATCH={}'.format(match), file=sys.stderr)
+            print(file=sys.stderr)
 
         yield super_allele, allele, match
 
