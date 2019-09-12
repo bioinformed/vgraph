@@ -83,7 +83,7 @@ def match_replicates(args):
                 for locus in superlocus:
                     lstart = locus.start
                     lstop = locus.stop
-                    lref = locus.alleles[0] or '-'
+                    lref = locus.ref or '-'
                     indices = locus.allele_indices
                     sep = '|' if locus.phased else '/'
                     geno = sep.join(locus.alleles[a] or '-' if a is not None else '.' for a in indices)

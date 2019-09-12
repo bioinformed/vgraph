@@ -81,13 +81,13 @@ def generate_superlocus_matches(chrom, superlocus, ref, alleles, mode, debug=Fal
                 allele.contig,
                 allele.start,
                 allele.stop,
-                allele.alleles[0] or '-',
-                allele.alleles[1] or '-'
+                allele.ref or '-',
+                ','.join(alt or '-' for alt in allele.alts)
             ), file=sys.stderr)
             print(file=sys.stderr)
 
             for i, locus in enumerate(super_non_ref, 1):
-                lref = locus.alleles[0] or '-'
+                lref = locus.ref or '-'
                 indices = locus.allele_indices
                 if indices.count(None) == len(indices):
                     geno = 'nocall'
@@ -98,16 +98,7 @@ def generate_superlocus_matches(chrom, superlocus, ref, alleles, mode, debug=Fal
                     geno = sep.join(locus.alleles[a] or '-' if a is not None else '.' for a in indices)
                 print('  VAR{:d}: {}[{:5d}-{:5d}) ref={} geno={}'.format(i, locus.contig, locus.start, locus.stop, lref, geno), file=sys.stderr)
 
-        # Search superlocus for each ALT allele; stop if any are found
-        matches = (find_allele(ref, allele, allele_index, super_non_ref, mode=mode, debug=debug) for allele_index in range(1, len(allele.alleles)))
-        matches = sorted(matches, key=match_sort_key)
-
-        match = matches[-1] if matches else None
-
-        if debug:
-            print(file=sys.stderr)
-            print('    MATCH={}'.format(match), file=sys.stderr)
-            print(file=sys.stderr)
+        match = find_allele(ref, allele, super_non_ref, mode=mode, debug=debug)
 
         yield super_allele, allele, match
 
