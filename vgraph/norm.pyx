@@ -476,6 +476,7 @@ class NormalizedLocus(object):
             self.max_stop  = record.stop
             return
 
+        # Normalize to remove VCF padding only
         self.start, self.stop, self.alleles = normalize_alleles(
             ref,
             record.start,
@@ -513,6 +514,14 @@ class NormalizedLocus(object):
 
         self.min_start = max(0, min(chain.from_iterable(lefts)) - variant_padding)
         self.max_stop  = max(chain.from_iterable(rights))       + variant_padding
+
+    @property
+    def ref(self):
+        return self.alleles[0]
+
+    @property
+    def alts(self):
+        return self.alleles[1:]
 
     def extreme_order_key(self):
         return self.min_start, self.max_stop

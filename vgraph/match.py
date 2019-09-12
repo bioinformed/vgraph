@@ -32,7 +32,6 @@ from vgraph.linearmatch import generate_graph, generate_paths, generate_genotype
 @dataclass(frozen=True)
 class AlleleMatch:
     """Dataclass for allele matching results."""
-    allele_index:  int
     allele_ploidy: int
     allele_depth:  int
     ref_ploidy:    int
@@ -255,16 +254,11 @@ def find_allele_exact_match(ref, allele, superlocus):
         a  = allele.left
         ll = locus.left
 
-        if (
-            a.start == ll.start
-            and a.stop  == ll.stop
-            and a.alleles[1] in ll.alleles[1:]
-            and 'PASS' in locus.record.filter
-        ):
-            index    = locus.alleles.index(a.alleles[1])
-            zygosity = locus.allele_indices.count(index)
-
-            return zygosity
+        if a.start == ll.start and a.stop == ll.stop and 'PASS' in locus.record.filter:
+            return sum(
+                locus.allele_indices.count(locus.alleles.index(alt))
+                for alt in set(ll.alts).intersect(a.alts)
+            )
 
     return 0
 
@@ -297,28 +291,33 @@ def int_mean(items, default=nothing):
     return round(sum(items) / n)
 
 
-def build_match_strings(ref, start, stop, allele, allele_index, mode='sensitive', debug=False):
+def build_match_strings(ref, start, stop, allele, mode='sensitive', debug=False):
     """Build allele matching strings."""
     if debug:
-        print('  Allele: start={}, stop={}, size={}, seq={}'.format(
+        print('  Allele: start={}, stop={}, size={}, ref={}, seq={}'.format(
             allele.start,
             allele.stop,
             allele.stop - allele.start,
-            allele.alleles[1]
+            allele.ref,
+            ','.join(allele.alts)
         ), file=sys.stderr)
+
+    alts = allele.alts
 
     # Require reference matches within the wobble zone + padding built into each normalized allele
     if mode == 'specific':
-        super_allele = normalize_seq(ref[start:allele.start] + allele.alleles[allele_index] + ref[allele.stop:stop])
-        super_ref    = normalize_seq(ref[start:stop])
+        super_alleles = [normalize_seq(ref[start:allele.start] + alt + ref[allele.stop:stop]) for alt in alts]
+        super_ref     = normalize_seq(ref[start:stop])
     elif mode == 'sensitive':
-        super_allele = normalize_seq(
-            '*' * (allele.min_start - start)
-            + ref[allele.min_start:allele.start]
-            + allele.alleles[allele_index]
-            + ref[allele.stop:allele.max_stop]
-            + '*' * (stop - allele.max_stop)
-        )
+        super_alleles = [
+            normalize_seq(
+                '*' * (allele.min_start - start)
+                + ref[allele.min_start:allele.start]
+                + alt
+                + ref[allele.stop:allele.max_stop]
+                + '*' * (stop - allele.max_stop)
+            ) for alt in alts
+        ]
 
         super_ref = normalize_seq(
             '*' * (allele.min_start - start)
@@ -330,25 +329,48 @@ def build_match_strings(ref, start, stop, allele, allele_index, mode='sensitive'
 
     if debug:
         print('                MODE:', mode, file=sys.stderr)
-        print('        SUPER ALLELE:', super_allele, file=sys.stderr)
+        print('       SUPER ALLELES:', super_alleles, file=sys.stderr)
         print('        SUPER REF:   ', super_ref, file=sys.stderr)
 
-    assert len(super_allele) == stop - start - len(allele.alleles[0]) + len(allele.alleles[allele_index])
+    assert all(len(a) == stop - start - len(allele.ref) + len(alt) for a, alt in zip(super_alleles, alts))
 
-    return super_ref, super_allele
+    return super_ref, super_alleles
 
 
-def find_allele_matches(ref, start, stop, allele, allele_index, genos, ploidy, mode, debug=False):
+def compare_alleles(alleles, seq):
+    """Compare sequence with each potential allele using fancy matching.
+
+    Args:
+        alleles: candidate alleles
+        seq: sequence with which to compare
+
+    Returns:
+        True: if any allele fancy-matches seq
+        False: if no alleles match and none are uncertain
+        None: if no alleles match and one or more is uncertain
+
+    """
+    notfound = False
+    for allele in alleles:
+        match = fancy_match(allele, seq)
+        if match:
+            return True
+        elif match is None:
+            notfound = None
+    return notfound
+
+
+def find_allele_matches(ref, start, stop, allele, genos, ploidy, mode, debug=False):
     """Analyze graph paths to find allele matches."""
     # superlocus contains impossible genotypes and no paths are valid
-    super_ref, super_allele = build_match_strings(ref, start, stop, allele, allele_index, mode, debug)
+    super_ref, super_alleles = build_match_strings(ref, start, stop, allele, mode, debug)
 
     if not genos:
         return None
 
     matches = (
         (
-            [fancy_match(super_allele, seq) for (seq, _) in geno],
+            [compare_alleles(super_alleles, seq) for (seq, _) in geno],
             geno,
         ) for geno in genos
     )
@@ -387,7 +409,8 @@ def find_allele_matches(ref, start, stop, allele, allele_index, genos, ploidy, m
     other_ad      = int_mean([sum(p) for p in zip(*other)], None)
 
     if debug:
-        print('   ALLELE:{} {}'.format(len(super_allele), super_allele), file=sys.stderr)
+        for super_allele in super_alleles:
+            print('   ALLELE:{} {}'.format(len(super_allele), super_allele), file=sys.stderr)
         for i, (g, m) in enumerate(zip(genos, matches)):
             print('   GENO{:02d}:{} {}'.format(i, tuple(map(len, g)),  g), file=sys.stderr)
             print('  MATCH{:02d}: {}'.format(i, m), file=sys.stderr)
@@ -396,10 +419,10 @@ def find_allele_matches(ref, start, stop, allele, allele_index, genos, ploidy, m
               file=sys.stderr)
         print('  ZYGOSITY: {}'.format(zygosity), file=sys.stderr)
 
-    return AlleleMatch(allele_index, allele_ploidy, allele_ad, ref_ploidy, ref_ad, other_ploidy, other_ad)
+    return AlleleMatch(allele_ploidy, allele_ad, ref_ploidy, ref_ad, other_ploidy, other_ad)
 
 
-def find_allele(ref, allele, allele_index, superlocus, mode='sensitive', debug=False):
+def find_allele(ref, allele, superlocus, mode='sensitive', debug=False):
     """Check for the presence of an allele within a superlocus."""
     start, stop = get_superlocus_bounds([[allele], superlocus])
 
@@ -427,4 +450,4 @@ def find_allele(ref, allele, allele_index, superlocus, mode='sensitive', debug=F
     ploidy = max(len(locus.allele_indices) for locus in superlocus) if superlocus else 2
     genos  = list(generate_genotypes_with_paths(paths, constraints, ploidy))
 
-    return find_allele_matches(ref, start, stop, allele, allele_index, genos, ploidy, mode, debug)
+    return find_allele_matches(ref, start, stop, allele, genos, ploidy, mode, debug)
