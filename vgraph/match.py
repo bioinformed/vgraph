@@ -32,6 +32,7 @@ from vgraph.linearmatch import generate_graph, generate_paths, generate_genotype
 @dataclass(frozen=True)
 class AlleleMatch:
     """Dataclass for allele matching results."""
+    allele_index:  int
     allele_ploidy: int
     allele_depth:  int
     ref_ploidy:    int
@@ -296,11 +297,8 @@ def int_mean(items, default=nothing):
     return round(sum(items) / n)
 
 
-def find_allele(ref, allele, superlocus, mode='sensitive', debug=False):  # noqa: C901
-    """Check for the presence of an allele within a superlocus."""
-    # Bounds come from normalized extremes
-    start, stop = get_superlocus_bounds([[allele], superlocus])
-
+def build_match_strings(ref, start, stop, allele, allele_index, mode='sensitive', debug=False):
+    """Build allele matching strings."""
     if debug:
         print('  Allele: start={}, stop={}, size={}, seq={}'.format(
             allele.start,
@@ -311,13 +309,13 @@ def find_allele(ref, allele, superlocus, mode='sensitive', debug=False):  # noqa
 
     # Require reference matches within the wobble zone + padding built into each normalized allele
     if mode == 'specific':
-        super_allele = normalize_seq(ref[start:allele.start] + allele.alleles[1] + ref[allele.stop:stop])
+        super_allele = normalize_seq(ref[start:allele.start] + allele.alleles[allele_index] + ref[allele.stop:stop])
         super_ref    = normalize_seq(ref[start:stop])
     elif mode == 'sensitive':
         super_allele = normalize_seq(
             '*' * (allele.min_start - start)
             + ref[allele.min_start:allele.start]
-            + allele.alleles[1]
+            + allele.alleles[allele_index]
             + ref[allele.stop:allele.max_stop]
             + '*' * (stop - allele.max_stop)
         )
@@ -335,37 +333,19 @@ def find_allele(ref, allele, superlocus, mode='sensitive', debug=False):  # noqa
         print('        SUPER ALLELE:', super_allele, file=sys.stderr)
         print('        SUPER REF:   ', super_ref, file=sys.stderr)
 
-    assert len(super_allele) == stop - start - len(allele.alleles[0]) + len(allele.alleles[1])
+    assert len(super_allele) == stop - start - len(allele.alleles[0]) + len(allele.alleles[allele_index])
 
-    # Create genotype sets for each superlocus
-    try:
-        graph, constraints = generate_graph(ref, start, stop, superlocus, debug)
+    return super_ref, super_allele
 
-        if debug:
-            graph = list(graph)
-            for i, (start, stop, alleles) in enumerate(graph):
-                print('  GRAPH{:02d}: start={}, stop={}, alleles={}'.format(i, start, stop, alleles), file=sys.stderr)
-            print(file=sys.stderr)
 
-        paths = list(generate_paths(graph, debug=debug))
+def find_allele_matches(ref, start, stop, allele, allele_index, genos, ploidy, mode, debug=False):
+    """Analyze graph paths to find allele matches."""
+    # superlocus contains impossible genotypes and no paths are valid
+    super_ref, super_allele = build_match_strings(ref, start, stop, allele, allele_index, mode, debug)
 
-        if debug:
-            for i, p in enumerate(paths):
-                print('  PATH{:02d}: {}'.format(i, p), file=sys.stderr)
-            print(file=sys.stderr)
-
-    except OverlapError:
+    if not genos:
         return None
 
-    # Generate the set of diploid genotypes (actually haplotypes)
-    ploidy = max(len(locus.allele_indices) for locus in superlocus) if superlocus else 2
-    genos  = list(generate_genotypes_with_paths(paths, constraints, ploidy))
-
-    # superlocus contains impossible genotypes and no paths are valid
-    if not genos:
-        return 0
-
-    # Apply matcher to each pair of allele
     matches = (
         (
             [fancy_match(super_allele, seq) for (seq, _) in geno],
@@ -416,4 +396,35 @@ def find_allele(ref, allele, superlocus, mode='sensitive', debug=False):  # noqa
               file=sys.stderr)
         print('  ZYGOSITY: {}'.format(zygosity), file=sys.stderr)
 
-    return AlleleMatch(allele_ploidy, allele_ad, ref_ploidy, ref_ad, other_ploidy, other_ad)
+    return AlleleMatch(allele_index, allele_ploidy, allele_ad, ref_ploidy, ref_ad, other_ploidy, other_ad)
+
+
+def find_allele(ref, allele, allele_index, superlocus, mode='sensitive', debug=False):
+    """Check for the presence of an allele within a superlocus."""
+    start, stop = get_superlocus_bounds([[allele], superlocus])
+
+    # Create genotype sets for each superlocus
+    try:
+        graph, constraints = generate_graph(ref, start, stop, superlocus, debug)
+
+        if debug:
+            graph = list(graph)
+            for i, (start, stop, alleles) in enumerate(graph):
+                print('  GRAPH{:02d}: start={}, stop={}, alleles={}'.format(i, start, stop, alleles), file=sys.stderr)
+            print(file=sys.stderr)
+
+        paths = list(generate_paths(graph, debug=debug))
+
+        if debug:
+            for i, p in enumerate(paths):
+                print('  PATH{:02d}: {}'.format(i, p), file=sys.stderr)
+            print(file=sys.stderr)
+
+    except OverlapError:
+        return None
+
+    # Generate the set of diploid genotypes (actually haplotypes)
+    ploidy = max(len(locus.allele_indices) for locus in superlocus) if superlocus else 2
+    genos  = list(generate_genotypes_with_paths(paths, constraints, ploidy))
+
+    return find_allele_matches(ref, start, stop, allele, allele_index, genos, ploidy, mode, debug)
