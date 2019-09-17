@@ -447,12 +447,20 @@ class NormalizedLocus(object):
             sample = record.samples[name]
 
             if 'PGT' in sample:
-                sample['GT'] = tuple(map(int, sample['PGT'].split('|')))
-                sample.phased = True
-                del record.format['PGT']
+                pgt = tuple(map(int, sample['PGT'].split('|')))
 
-                if 'PID' in sample:
-                    self.phase_group = sample['PID']
+                # Do not promote PGT to GT if the alleles do not match.  Works around bug in GATK/Sentieon, which
+                # can output wrong phased genotypes (PGT) that are inconsistent with the called genotype (GT).
+                if sorted(pgt) == sorted(sample.allele_indices):
+                    sample['GT'] = pgt
+                    sample.phased = True
+                    del record.format['PGT']
+
+                    if 'PID' in sample:
+                        self.phase_group = sample['PID']
+
+            elif sample.phased and 'PS' in sample:
+                self.phase_group = str(sample['PS'])
 
             allele_indices = sample.allele_indices
             self.phased = sample.phased
