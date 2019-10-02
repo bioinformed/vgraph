@@ -203,6 +203,7 @@ def write_table_header(out):
         'SAMPLE_ID',
         'ALLELE_ID',
         'STATUS',
+        'VARIANT_QUALITY',
         'CALL_QUALITY',
         'ALLELE_PLOIDY',
         'REFERENCE_PLOIDY',
@@ -218,14 +219,16 @@ def write_table_row(out, sample_name, var_id, superlocus, status, match):
     if not out:
         return
 
+    qual = min(locus.record.qual for locus in superlocus if locus.record.qual is not None) if superlocus else ''
     gts  = [locus.record.samples[sample_name] for locus in superlocus]
-    qual = min(gt.get('GQ', 0) for gt in gts) if gts else ''
+    gq   = min(gt.get('GQ', 0) for gt in gts) if gts else ''
 
     row = [
         sample_name,
         var_id,
         status,
         qual,
+        gq,
     ]
 
     if match:
@@ -234,10 +237,9 @@ def write_table_row(out, sample_name, var_id, superlocus, status, match):
             match.allele_depth if match.allele_depth is not None else 'NOT_CALLED',
             match.ref_depth,   # ref allele depth should always be reported if records are present
             match.other_depth  if match.other_depth  is not None else 'NOT_CALLED',
-
         ]
     else:
-        row += ['NO_CALL'] * 6
+        row += ['NO_CALL'] * 3 + ['NOT_CALLED'] * 3
 
     out.writerow(row)
 
