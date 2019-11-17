@@ -23,7 +23,7 @@ from itertools   import groupby
 from .smartfile  import smartfile
 
 
-class BedRecord(object):
+class BedRecord:
     """Simple class for working with records from BED files."""
     __slots__ = ('contig', 'start', 'stop', 'name', 'score', 'strand', 'thick_start', 'thick_end', 'item_rgb')
     field_names = __slots__
@@ -71,11 +71,11 @@ class BedRecord(object):
 
     def __repr__(self):
         """Return the string representation of this BedRecord."""
-        fields = ('%s=%r' % (k, v) for k, v in zip(self.field_names, self.to_tuple()) if v not in (None, ''))
+        fields = (f'{k}={v!r}' for k, v in zip(self.field_names, self.to_tuple()) if v not in (None, ''))
         return 'BedRecord(%s)' % ', '.join(fields)
 
 
-class BedFile(object):
+class BedFile:
     """Simple class for iterating through the records of a BED file."""
     def __init__(self, filename):
         """Open a BedFile."""

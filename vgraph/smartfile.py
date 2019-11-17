@@ -94,7 +94,7 @@ def smartfile(filename, mode='r', buffering=-1, encoding=None, errors=None, newl
     filename = os.path.expanduser(filename)
 
     if 'r' in mode and not filename.startswith('s3:') and not Path(filename).exists():
-        raise IOError('file does not exist')
+        raise OSError('file does not exist')
 
     comp = compressed_filename(filename)
 

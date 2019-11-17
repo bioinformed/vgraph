@@ -76,7 +76,7 @@ def match_replicates(args):
             super_start, super_stop = get_superlocus_bounds([super1, super2])
 
             print('-' * 80)
-            print('{}:[{:d}-{:d}):'.format(chrom, super_start, super_stop))
+            print(f'{chrom}:[{super_start:d}-{super_stop:d}):')
             print()
 
             for i, superlocus in enumerate([super1, super2], 1):
@@ -87,13 +87,13 @@ def match_replicates(args):
                     indices = locus.allele_indices
                     sep = '|' if locus.phased else '/'
                     geno = sep.join(locus.alleles[a] or '-' if a is not None else '.' for a in indices)
-                    print('  NORM{:d}: [{:5d}-{:5d}) ref={} geno={}'.format(i, lstart, lstop, lref, geno))
+                    print(f'  NORM{i:d}: [{lstart:5d}-{lstop:5d}) ref={lref} geno={geno}')
             print()
 
             match, match_type = superlocus_equal(ref, super_start, super_stop, super1, super2, debug=args.debug)
             match_status = match_status_map[match]
 
-            print('    MATCH={} TYPE={}'.format(match_status, match_type))
+            print(f'    MATCH={match_status} TYPE={match_type}')
             print()
 
             write_match(out_vars[0], super1, args.name1, match_status, match_type)
@@ -101,7 +101,7 @@ def match_replicates(args):
 
             for i, superlocus in enumerate([super1, super2], 1):
                 for locus in superlocus:
-                    print('  VCF{:d}: {}'.format(i, locus.record), end='')
+                    print(f'  VCF{i:d}: {locus.record}', end='')
             print()
 
     for out_var in out_vars:
