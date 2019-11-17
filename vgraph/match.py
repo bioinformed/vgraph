@@ -280,6 +280,18 @@ def path_to_ads(path, counts):
         yield dp / c[p.index]
 
 
+def path_to_ref_ads(path):
+    """Convert a path through a variant graph into a sequence of reference allele depths."""
+    for p in path:
+        if not p.locus:
+            continue
+        record = p.locus.record
+        sample = record.samples[0]
+        assert p.index is None or p.index != 0
+        dp     = sample['AD'][0] if 'AD' in sample else sample.get('MIN_DP', 0)
+        yield dp
+
+
 nothing = object()
 
 
@@ -293,16 +305,16 @@ def int_mean(items, default=nothing):
 
 def build_match_strings(ref, start, stop, allele, mode='sensitive', debug=False):
     """Build allele matching strings."""
+    alts = allele.alts
+
     if debug:
         print('  Allele: start={}, stop={}, size={}, ref={}, seq={}'.format(
             allele.start,
             allele.stop,
             allele.stop - allele.start,
             allele.ref,
-            ','.join(allele.alts)
+            ','.join(alts),
         ), file=sys.stderr)
-
-    alts = allele.alts
 
     # Require reference matches within the wobble zone + padding built into each normalized allele
     if mode == 'specific':
@@ -328,9 +340,9 @@ def build_match_strings(ref, start, stop, allele, mode='sensitive', debug=False)
         raise ValueError('invalid match mode specified: {}'.format(mode))
 
     if debug:
-        print('                MODE:', mode, file=sys.stderr)
+        print('                MODE:', mode,          file=sys.stderr)
         print('       SUPER ALLELES:', super_alleles, file=sys.stderr)
-        print('        SUPER REF:   ', super_ref, file=sys.stderr)
+        print('        SUPER REF:   ', super_ref,     file=sys.stderr)
 
     assert all(len(a) == stop - start - len(allele.ref) + len(alt) for a, alt in zip(super_alleles, alts))
 
@@ -368,7 +380,7 @@ def find_allele_matches(ref, start, stop, allele, genos, ploidy, mode, debug=Fal
     if not genos:
         return None
 
-    matches = (
+    all_matches = (
         (
             [compare_alleles(super_alleles, seq) for (seq, _) in geno],
             geno,
@@ -382,15 +394,15 @@ def find_allele_matches(ref, start, stop, allele, genos, ploidy, mode, debug=Fal
             i,
             geno,
             matches,
-        ) for i, (matches, geno) in enumerate(matches)
+        ) for i, (matches, geno) in enumerate(all_matches)
     )
 
     if not zygosity and nocalls:
         return None
 
-    seqs, nodes   = zip(*geno)
-    allele_counts = list(path_allele_counts(nodes))
-    allele_depths = [list(path_to_ads(p, allele_counts)) for p in nodes]
+    seqs, paths   = zip(*geno)
+    allele_counts = list(path_allele_counts(paths))
+    allele_depths = [list(path_to_ads(path, allele_counts)) for path in paths]
 
     found, ref, other = [], [], []
     for m, seq, ad in zip(matches, seqs, allele_depths):
@@ -404,6 +416,12 @@ def find_allele_matches(ref, start, stop, allele, genos, ploidy, mode, debug=Fal
     ref_ploidy    = len(ref)
     allele_ploidy = len(found)
     other_ploidy  = len(other)
+
+    # If a reference allele was not called, then collect all reference allele depths
+    # from an arbitrary path, as AD always contains reference counts.
+    if not ref and paths:
+        ref = [list(path_to_ref_ads(paths[0]))]
+
     allele_ad     = int_mean([sum(p) for p in zip(*found)], None)
     ref_ad        = int_mean([sum(p) for p in zip(*ref)],   None)
     other_ad      = int_mean([sum(p) for p in zip(*other)], None)
@@ -432,8 +450,8 @@ def find_allele(ref, allele, superlocus, mode='sensitive', debug=False):
 
         if debug:
             graph = list(graph)
-            for i, (start, stop, alleles) in enumerate(graph):
-                print('  GRAPH{:02d}: start={}, stop={}, alleles={}'.format(i, start, stop, alleles), file=sys.stderr)
+            for i, (astart, astop, alleles) in enumerate(graph):
+                print('  GRAPH{:02d}: start={}, stop={}, alleles={}'.format(i, astart, astop, alleles), file=sys.stderr)
             print(file=sys.stderr)
 
         paths = list(generate_paths(graph, debug=debug))
