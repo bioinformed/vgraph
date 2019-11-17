@@ -92,7 +92,7 @@ class RefAllele(Allele):
     def __repr__(self):
         """Return a convenient string representation of this allele."""
         seq = trim_ref(self.ref, self.start, self.stop) or '-'
-        return 'RefAllele({}, {}, {})'.format(self.start, self.stop, seq)
+        return f'RefAllele({self.start}, {self.stop}, {seq})'
 
 
 class HomAltAllele(Allele):
@@ -115,7 +115,7 @@ class HomAltAllele(Allele):
     def __repr__(self):
         """Return a convenient string representation of this allele."""
         seq = trim_seq(self.seq) or '-'
-        return 'HomAltAllele({}, {}, {})'.format(self.start, self.stop, seq)
+        return f'HomAltAllele({self.start}, {self.stop}, {seq})'
 
 
 class NocallAllele(Allele):
@@ -146,7 +146,7 @@ class NocallAllele(Allele):
             seq = '.' * n or '-'
         else:
             seq = '...'
-        return 'NocallAllele({}, {}, {})'.format(self.start, self.stop, seq)
+        return f'NocallAllele({self.start}, {self.stop}, {seq})'
 
 
 class HetAltAllele(Allele):
@@ -170,9 +170,9 @@ class HetAltAllele(Allele):
         """Return a convenient string representation of this allele."""
         seq = trim_seq(self.seq) or '-'
         if self.phase is None:
-            return 'HetAltAllele({}, {}, {})'.format(self.start, self.stop, seq)
+            return f'HetAltAllele({self.start}, {self.stop}, {seq})'
         else:
-            return 'HetAltAllele({}, {}, {}, phase={})'.format(self.start, self.stop, seq, self.phase)
+            return f'HetAltAllele({self.start}, {self.stop}, {seq}, phase={self.phase})'
 
 
 def is_valid_geno(zygosity_constraints, path_nodes):
@@ -207,7 +207,7 @@ def generate_graph(ref, start, stop, loci, debug=False):
                 if pos < locus.start:
                     yield pos, locus.start, [RefAllele(None, pos, locus.start, ref)]
                 elif pos > locus.start:
-                    raise OverlapError('overlapping locus: previous stop={}, current start={}'.format(pos, locus.start))
+                    raise OverlapError(f'overlapping locus: previous stop={pos}, current start={locus.start}')
 
             alleles = _make_alleles(ref, locus, zygosity_constraints)
             yield locus.start, locus.stop, list(alleles)
@@ -239,7 +239,7 @@ def _make_alleles(ref, locus, zygosity_constraints):
             # each alt allele is distinct
             for allele_phase in (j for j, idx in enumerate(indices) if i == idx):
                 if phase_group:
-                    phase = '{}/{}'.format(phase_group, allele_phase)
+                    phase = f'{phase_group}/{allele_phase}'
                 else:
                     phase = str(allele_phase)
                 allele = HetAltAllele(locus, i, locus.start, locus.stop, alleles[i], phase)
@@ -415,19 +415,19 @@ def generate_genotypes(paths, zygosity_constraints, debug=False):
         print('PATHS:', file=sys.stderr)
         for i, (seq, path) in enumerate(paths, 1):
             assert len(path) == len(set(path))
-            print('{:4d}: {}'.format(i, seq), file=sys.stderr)
+            print(f'{i:4d}: {seq}', file=sys.stderr)
         print(file=sys.stderr)
 
         print('POSSIBLE HAPLOTYPES:', file=sys.stderr)
         for i, (seq, path) in enumerate(paths, 1):
             assert len(path) == len(set(path))
-            print('{:4d}: {}'.format(i, seq), file=sys.stderr)
+            print(f'{i:4d}: {seq}', file=sys.stderr)
         print(file=sys.stderr)
 
         print('GENOTYPES:', file=sys.stderr)
 
         for i, (allele1, allele2) in enumerate(genos, 1):
-            print('{:4d}: {}/{}'.format(i, allele1, allele2), file=sys.stderr)
+            print(f'{i:4d}: {allele1}/{allele2}', file=sys.stderr)
         print(file=sys.stderr)
 
     return genos

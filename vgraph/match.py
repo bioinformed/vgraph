@@ -58,7 +58,7 @@ def records_to_loci(ref, records, name, variant_padding):
         try:
             yield NormalizedLocus(recnum, record, ref, name, variant_padding)
         except ReferenceMismatch:
-            print('Reference mismatch: {}:{}-{}'.format(record.contig, record.start, record.stop))
+            print(f'Reference mismatch: {record.contig}:{record.start}-{record.stop}')
 
 
 def all_contigs(varfiles):
@@ -337,7 +337,7 @@ def build_match_strings(ref, start, stop, allele, mode='sensitive', debug=False)
             + '*' * (stop - allele.max_stop)
         )
     else:
-        raise ValueError('invalid match mode specified: {}'.format(mode))
+        raise ValueError(f'invalid match mode specified: {mode}')
 
     if debug:
         print('                MODE:', mode,          file=sys.stderr)
@@ -431,11 +431,11 @@ def find_allele_matches(ref, start, stop, allele, genos, ploidy, mode, debug=Fal
             print('   ALLELE:{} {}'.format(len(super_allele), super_allele), file=sys.stderr)
         for i, (g, m) in enumerate(zip(genos, matches)):
             print('   GENO{:02d}:{} {}'.format(i, tuple(map(len, g)),  g), file=sys.stderr)
-            print('  MATCH{:02d}: {}'.format(i, m), file=sys.stderr)
+            print(f'  MATCH{i:02d}: {m}', file=sys.stderr)
         print(file=sys.stderr)
         print(f'ALLELE: id={allele.record.id}, allele_ploidy={allele_ploidy}, ref_ploidy={ref_ploidy}, other_ploidy={other_ploidy}, ploidy={ploidy}',
               file=sys.stderr)
-        print('  ZYGOSITY: {}'.format(zygosity), file=sys.stderr)
+        print(f'  ZYGOSITY: {zygosity}', file=sys.stderr)
 
     return AlleleMatch(allele_ploidy, allele_ad, ref_ploidy, ref_ad, other_ploidy, other_ad)
 
@@ -451,14 +451,14 @@ def find_allele(ref, allele, superlocus, mode='sensitive', debug=False):
         if debug:
             graph = list(graph)
             for i, (astart, astop, alleles) in enumerate(graph):
-                print('  GRAPH{:02d}: start={}, stop={}, alleles={}'.format(i, astart, astop, alleles), file=sys.stderr)
+                print(f'  GRAPH{i:02d}: start={astart}, stop={astop}, alleles={alleles}', file=sys.stderr)
             print(file=sys.stderr)
 
         paths = list(generate_paths(graph, debug=debug))
 
         if debug:
             for i, p in enumerate(paths):
-                print('  PATH{:02d}: {}'.format(i, p), file=sys.stderr)
+                print(f'  PATH{i:02d}: {p}', file=sys.stderr)
             print(file=sys.stderr)
 
     except OverlapError:

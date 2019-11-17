@@ -66,7 +66,7 @@ def generate_superlocus_matches(chrom, superlocus, ref, alleles, mode, debug=Fal
         if debug:
             super_start, super_stop = get_superlocus_bounds([[allele], super_non_ref])
             print('-' * 80, file=sys.stderr)
-            print('{}:[{:d}-{:d}):'.format(chrom, super_start, super_stop), file=sys.stderr)
+            print(f'{chrom}:[{super_start:d}-{super_stop:d}):', file=sys.stderr)
             print(file=sys.stderr)
 
             print('  ALLELE: {} {}:[{}-{}) ref={} alt={}'.format(
@@ -89,13 +89,13 @@ def generate_superlocus_matches(chrom, superlocus, ref, alleles, mode, debug=Fal
                 else:
                     sep = '|' if locus.phased else '/'
                     geno = sep.join(locus.alleles[a] or '-' if a is not None else '.' for a in indices)
-                print('  VAR{:d}: {}[{:5d}-{:5d}) ref={} geno={}'.format(i, locus.contig, locus.start, locus.stop, lref, geno), file=sys.stderr)
+                print(f'  VAR{i:d}: {locus.contig}[{locus.start:5d}-{locus.stop:5d}) ref={lref} geno={geno}', file=sys.stderr)
 
         match = find_allele(ref, allele, super_non_ref, mode=mode, debug=debug)
 
         if debug:
             print(file=sys.stderr)
-            print('    MATCH={}'.format(match), file=sys.stderr)
+            print(f'    MATCH={match}', file=sys.stderr)
             print(file=sys.stderr)
 
         yield super_allele, allele, match
