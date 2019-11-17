@@ -219,7 +219,7 @@ def write_table_row(out, sample_name, var_id, superlocus, status, match):
     if not out:
         return
 
-    qual = min(locus.record.qual for locus in superlocus if locus.record.qual is not None) if superlocus else ''
+    qual = min(locus.record.qual for locus in superlocus if locus.record.qual is not None) if superlocus else None
     gts  = [locus.record.samples[sample_name] for locus in superlocus]
     gq   = min(gt.get('GQ', 0) for gt in gts) if gts else ''
 
@@ -227,7 +227,7 @@ def write_table_row(out, sample_name, var_id, superlocus, status, match):
         sample_name,
         var_id,
         status,
-        qual,
+        f'{qual:.2f}' if qual is not None else '',
         gq,
     ]
 
