@@ -287,7 +287,6 @@ def path_to_ref_ads(path):
             continue
         record = p.locus.record
         sample = record.samples[0]
-        assert p.index is None or p.index != 0
         dp     = sample['AD'][0] if 'AD' in sample else sample.get('MIN_DP', 0)
         yield dp
 
