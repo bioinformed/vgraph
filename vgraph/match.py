@@ -16,7 +16,6 @@
 
 import sys
 
-from collections        import Counter
 from dataclasses        import dataclass
 from itertools          import chain
 from typing             import Optional
@@ -263,22 +262,18 @@ def find_allele_exact_match(ref, allele, superlocus):
     return 0
 
 
-def path_allele_counts(paths):
-    """Count number ploidy of each allele at each node in paths."""
-    for ps in zip(*paths):
-        yield Counter(p.index for p in ps if p.locus)
-
-
-def path_to_ads(path, counts):
+def path_to_ads(path):
     """Convert a path through a variant graph into a sequence of allele depths."""
-    for p, c in zip(path, counts):
+    for p in path:
         # Skip nodes with no VCF record
         if not p.locus:
             continue
         record = p.locus.record
         sample = record.samples[0]
-        dp     = sample['AD'][p.index] if 'AD' in sample and p.index is not None else sample.get('MIN_DP', 0)
-        yield dp // c[p.index]
+        if p.index is None or 'AD' not in sample:
+            yield sample.get('MIN_DP', 0)
+        else:
+            yield sample['AD'][p.index]
 
 
 def path_to_ref_ads(path):
@@ -289,14 +284,21 @@ def path_to_ref_ads(path):
             continue
         record = p.locus.record
         sample = record.samples[0]
-        yield sample['AD'][0] if 'AD' in sample else sample.get('MIN_DP', 0)
+
+        # Do not report ref AD if reference was called,
+        # since that AD will be part of FOUND or OTHER
+        if 'AD' in sample and p.index:
+            yield sample['AD'][0]
+        elif 'AD' not in sample and 'MIN_DP' in sample:
+            yield sample['MIN_DP']
+        else:
+            yield 0
 
 
 def build_match_result(geno, matches, super_ref):
     """Build match results."""
     seqs, paths   = zip(*geno)
-    allele_counts = list(path_allele_counts(paths))
-    allele_depths = [list(path_to_ads(path, allele_counts)) for path in paths]
+    allele_depths = [list(path_to_ads(path)) for path in paths]
 
     found, ref, other = [], [], []
     for m, seq, ad in zip(matches, seqs, allele_depths):
@@ -327,18 +329,11 @@ nothing = object()
 
 
 def empty_min(items, default=nothing):
+    """Return the min of items unless it is empty and a default is provided."""
     items = list(items)
     if not items and default is not nothing:
         return default
     return min(items)
-
-
-def int_mean(items, default=nothing):
-    """Take the rounded mean of a sequence of items."""
-    n = len(items)
-    if not n and default is not nothing:
-        return default
-    return round(sum(items) / n)
 
 
 def build_match_strings(ref, start, stop, allele, mode='sensitive', debug=False):
