@@ -304,7 +304,7 @@ def build_match_result(geno, matches, super_ref):
     for m, seq, ad in zip(matches, seqs, allele_depths):
         if m:
             found.append(ad)
-        elif fancy_match(super_ref, seq):
+        elif seq == super_ref:  # no need for fancy_match; super_ref has no wildcards
             ref.append(ad)
         else:
             other.append(ad)
@@ -349,10 +349,11 @@ def build_match_strings(ref, start, stop, allele, mode='sensitive', debug=False)
             ','.join(alts),
         ), file=sys.stderr)
 
+    super_ref = normalize_seq(ref[start:stop])
+
     # Require reference matches within the wobble zone + padding built into each normalized allele
     if mode == 'specific':
         super_alleles = [normalize_seq(ref[start:allele.start] + alt + ref[allele.stop:stop]) for alt in alts]
-        super_ref     = normalize_seq(ref[start:stop])
     elif mode == 'sensitive':
         super_alleles = [
             normalize_seq(
@@ -363,12 +364,6 @@ def build_match_strings(ref, start, stop, allele, mode='sensitive', debug=False)
                 + '*' * (stop - allele.max_stop)
             ) for alt in alts
         ]
-
-        super_ref = normalize_seq(
-            '*' * (allele.min_start - start)
-            + ref[allele.min_start:allele.max_stop]
-            + '*' * (stop - allele.max_stop)
-        )
     else:
         raise ValueError(f'invalid match mode specified: {mode}')
 
