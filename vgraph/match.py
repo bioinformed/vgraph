@@ -16,7 +16,6 @@
 
 import sys
 
-from collections        import Counter
 from dataclasses        import dataclass
 from itertools          import chain
 from typing             import Optional
@@ -263,43 +262,78 @@ def find_allele_exact_match(ref, allele, superlocus):
     return 0
 
 
-def path_allele_counts(paths):
-    """Count number ploidy of each allele at each node in paths."""
-    for ps in zip(*paths):
-        yield Counter(p.index for p in ps if p.locus)
-
-
-def path_to_ads(path, counts):
+def path_to_ads(path):
     """Convert a path through a variant graph into a sequence of allele depths."""
-    for p, c in zip(path, counts):
+    for p in path:
+        # Skip nodes with no VCF record
         if not p.locus:
             continue
         record = p.locus.record
         sample = record.samples[0]
-        dp     = sample['AD'][p.index] if 'AD' in sample and p.index is not None else sample.get('MIN_DP', 0)
-        yield dp / c[p.index]
+        if p.index is None or 'AD' not in sample:
+            yield sample.get('MIN_DP', 0)
+        else:
+            yield sample['AD'][p.index]
 
 
 def path_to_ref_ads(path):
     """Convert a path through a variant graph into a sequence of reference allele depths."""
     for p in path:
+        # Skip nodes with no VCF record
         if not p.locus:
             continue
         record = p.locus.record
         sample = record.samples[0]
-        dp     = sample['AD'][0] if 'AD' in sample else sample.get('MIN_DP', 0)
-        yield dp
+
+        # Do not report ref AD if reference was called,
+        # since that AD will be part of FOUND or OTHER
+        if 'AD' in sample and p.index:
+            yield sample['AD'][0]
+        elif 'AD' not in sample and 'MIN_DP' in sample:
+            yield sample['MIN_DP']
+        else:
+            yield 0
+
+
+def build_match_result(geno, matches, super_ref):
+    """Build match results."""
+    seqs, paths   = zip(*geno)
+    allele_depths = [list(path_to_ads(path)) for path in paths]
+
+    found, ref, other = [], [], []
+    for m, seq, ad in zip(matches, seqs, allele_depths):
+        if m:
+            found.append(ad)
+        elif seq == super_ref:  # no need for fancy_match; super_ref has no wildcards
+            ref.append(ad)
+        else:
+            other.append(ad)
+
+    ref_ploidy    = len(ref)
+    allele_ploidy = len(found)
+    other_ploidy  = len(other)
+
+    # If a reference allele was not called, then collect all reference allele depths
+    # from an arbitrary path, as AD always contains reference counts.
+    if not ref_ploidy and paths:
+        ref = [list(path_to_ref_ads(paths[0]))]
+
+    allele_ad     = empty_min(chain.from_iterable(found), default=None)
+    ref_ad        = empty_min(chain.from_iterable(ref),   default=None)
+    other_ad      = empty_min(chain.from_iterable(other), default=None)
+
+    return AlleleMatch(allele_ploidy, allele_ad, ref_ploidy, ref_ad, other_ploidy, other_ad)
 
 
 nothing = object()
 
 
-def int_mean(items, default=nothing):
-    """Take the rounded mean of a sequence of items."""
-    n = len(items)
-    if not n and default is not nothing:
+def empty_min(items, default=nothing):
+    """Return the min of items unless it is empty and a default is provided."""
+    items = list(items)
+    if not items and default is not nothing:
         return default
-    return round(sum(items) / n)
+    return min(items)
 
 
 def build_match_strings(ref, start, stop, allele, mode='sensitive', debug=False):
@@ -315,10 +349,11 @@ def build_match_strings(ref, start, stop, allele, mode='sensitive', debug=False)
             ','.join(alts),
         ), file=sys.stderr)
 
+    super_ref = normalize_seq(ref[start:stop])
+
     # Require reference matches within the wobble zone + padding built into each normalized allele
     if mode == 'specific':
         super_alleles = [normalize_seq(ref[start:allele.start] + alt + ref[allele.stop:stop]) for alt in alts]
-        super_ref     = normalize_seq(ref[start:stop])
     elif mode == 'sensitive':
         super_alleles = [
             normalize_seq(
@@ -329,12 +364,6 @@ def build_match_strings(ref, start, stop, allele, mode='sensitive', debug=False)
                 + '*' * (stop - allele.max_stop)
             ) for alt in alts
         ]
-
-        super_ref = normalize_seq(
-            '*' * (allele.min_start - start)
-            + ref[allele.min_start:allele.max_stop]
-            + '*' * (stop - allele.max_stop)
-        )
     else:
         raise ValueError(f'invalid match mode specified: {mode}')
 
@@ -399,31 +428,7 @@ def find_allele_matches(ref, start, stop, allele, genos, ploidy, mode, debug=Fal
     if not zygosity and nocalls:
         return None
 
-    seqs, paths   = zip(*geno)
-    allele_counts = list(path_allele_counts(paths))
-    allele_depths = [list(path_to_ads(path, allele_counts)) for path in paths]
-
-    found, ref, other = [], [], []
-    for m, seq, ad in zip(matches, seqs, allele_depths):
-        if m:
-            found.append(ad)
-        elif fancy_match(super_ref, seq):
-            ref.append(ad)
-        else:
-            other.append(ad)
-
-    ref_ploidy    = len(ref)
-    allele_ploidy = len(found)
-    other_ploidy  = len(other)
-
-    # If a reference allele was not called, then collect all reference allele depths
-    # from an arbitrary path, as AD always contains reference counts.
-    if not ref and paths:
-        ref = [list(path_to_ref_ads(paths[0]))]
-
-    allele_ad     = int_mean([sum(p) for p in zip(*found)], None)
-    ref_ad        = int_mean([sum(p) for p in zip(*ref)],   None)
-    other_ad      = int_mean([sum(p) for p in zip(*other)], None)
+    result = build_match_result(geno, matches, super_ref)
 
     if debug:
         for super_allele in super_alleles:
@@ -432,11 +437,14 @@ def find_allele_matches(ref, start, stop, allele, genos, ploidy, mode, debug=Fal
             print('   GENO{:02d}:{} {}'.format(i, tuple(map(len, g)),  g), file=sys.stderr)
             print(f'  MATCH{i:02d}: {m}', file=sys.stderr)
         print(file=sys.stderr)
-        print(f'ALLELE: id={allele.record.id}, allele_ploidy={allele_ploidy}, ref_ploidy={ref_ploidy}, other_ploidy={other_ploidy}, ploidy={ploidy}',
-              file=sys.stderr)
+        print(
+            f'ALLELE: id={allele.record.id}, allele_ploidy={result.allele_ploidy}, '
+            f'ref_ploidy={result.ref_ploidy}, other_ploidy={result.other_ploidy}, ploidy={result.ploidy}',
+            file=sys.stderr
+        )
         print(f'  ZYGOSITY: {zygosity}', file=sys.stderr)
 
-    return AlleleMatch(allele_ploidy, allele_ad, ref_ploidy, ref_ad, other_ploidy, other_ad)
+    return result
 
 
 def find_allele(ref, allele, superlocus, mode='sensitive', debug=False):
