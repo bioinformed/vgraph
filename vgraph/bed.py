@@ -20,6 +20,8 @@ from collections import defaultdict
 from operator    import attrgetter
 from itertools   import groupby
 
+import pysam
+
 from .smartfile  import smartfile
 
 
@@ -50,12 +52,12 @@ class BedRecord:
 
         n = len(fields)
 
-        name        = fields[3] or None if n >= 4 else None
-        score       = fields[4] or None if n >= 5 else None
-        strand      = fields[5] or None if n >= 6 else None
-        thick_start = fields[6] or None if n >= 7 else None
-        thick_end   = fields[7] or None if n >= 8 else None
-        item_rgb    = fields[8] or None if n >= 9 else None
+        name        = fields[3] or None
+        score       = fields[4] or None
+        strand      = fields[5] or None
+        thick_start = fields[6] or None
+        thick_end   = fields[7] or None
+        item_rgb    = fields[8] or None
 
         return BedRecord(contig, start, stop, name, score, strand, thick_start, thick_end, item_rgb)
 
@@ -92,7 +94,6 @@ class BedFile:
         if self._tabix:
             return self._tabix
 
-        import pysam
         self._tabix = pysam.Tabixfile(self.filename)
 
         return self._tabix
